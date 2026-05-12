@@ -21,6 +21,19 @@ private:
 
     [[nodiscard]]
     static constexpr bool isEnoughBufferSize(size_t bufferSize, size_t framePayloadSize) noexcept;
+
+    static void insertCRC(std::span<uint8_t> buffer, size_t& bytesWritten) noexcept;
+
+    static void insertPayload(std::span<uint8_t> buffer, const Frame& frame, size_t& bytesWritten) noexcept;
+
+    [[nodiscard]]
+    static bool insertMessageType(std::span<uint8_t> buffer, uint8_t value, size_t& bytesWritten);
+
+    [[nodiscard]]
+    static bool insertPackageKind(std::span<uint8_t> buffer, uint8_t value, size_t& bytesWritten);
+
+    /// @brief Inserta dos bytes en Big Endian
+    static void insertTwoBytes(std::span<uint8_t> buffer, uint16_t value, size_t& bytesWritten);
 };
 
 #endif // !RAW_FRAME_CODEC_HEADER

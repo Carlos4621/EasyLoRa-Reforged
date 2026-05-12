@@ -31,6 +31,29 @@ static std::vector<uint8_t> encodeFrameOrFail(const Frame& frame) {
     return output;
 }
 
+static std::vector<uint8_t> buildRawBufferWithEnums(uint8_t kindValue, uint8_t typeValue, std::span<const uint8_t> payload) {
+    const size_t bufferSize = Frame::Header_Size + payload.size() + Frame::CRC_Size;
+    std::vector<uint8_t> output(bufferSize);
+
+    size_t bytesWritten = 0;
+    output[bytesWritten++] = 2;
+    output[bytesWritten++] = kindValue;
+    output[bytesWritten++] = 0xA5;
+    output[bytesWritten++] = 0x00;
+    output[bytesWritten++] = 0x12;
+    output[bytesWritten++] = 0x34;
+    output[bytesWritten++] = typeValue;
+
+    std::copy(payload.begin(), payload.end(), output.begin() + bytesWritten);
+    bytesWritten += payload.size();
+
+    const auto crcValue = CRC::Calculate(output.data(), bytesWritten, CRC::CRC_16_CCITTFALSE());
+    output[bytesWritten++] = getHighByte(crcValue);
+    output[bytesWritten++] = getLowByte(crcValue);
+
+    return output;
+}
+
 TEST(RawFrameCodecTests, EncodeReturnsNulloptWhenBufferTooSmall) {
     std::vector<uint8_t> payload{ 0x10, 0x20, 0x30 };
     const auto frame = makeFrame(payload);
@@ -155,4 +178,40 @@ TEST(RawFrameDecoderTests, DecodeReturnsFalseWhenBufferIsTruncated) {
 
     const auto decoded = RawFrameDecoder::decodeFrameFromRaw(output, decodedFrame);
     EXPECT_FALSE(decoded);
+}
+
+TEST(RawFrameDecoderTests, DecodeAcceptsInvalidEnumValues) {
+    std::vector<uint8_t> payload{ 0x10, 0x20, 0x30 };
+    auto output = buildRawBufferWithEnums(0xFF, 0x99, payload);
+
+    std::vector<uint8_t> decodedPayload(payload.size(), 0x00);
+    Frame decodedFrame{};
+    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
+
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(output, decodedFrame);
+    EXPECT_FALSE(decoded);
+}
+
+TEST(RawFrameCodecTests, EncodeReturnsNulloptWhenPackageKindIsInvalid) {
+    std::vector<uint8_t> payload{ 0x10, 0x20, 0x30 };
+    Frame frame = makeFrame(payload);
+    frame.kind = static_cast<PackageKind>(0xFF);
+
+    const size_t bufferSize = Frame::Header_Size + payload.size() + Frame::CRC_Size;
+    std::vector<uint8_t> output(bufferSize);
+
+    const auto result = RawFrameCodec::encodeFrameToRaw(frame, output);
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(RawFrameCodecTests, EncodeReturnsNulloptWhenMessageTypeIsInvalid) {
+    std::vector<uint8_t> payload{ 0x10, 0x20, 0x30 };
+    Frame frame = makeFrame(payload);
+    frame.type = static_cast<MessageType>(0x99);
+
+    const size_t bufferSize = Frame::Header_Size + payload.size() + Frame::CRC_Size;
+    std::vector<uint8_t> output(bufferSize);
+
+    const auto result = RawFrameCodec::encodeFrameToRaw(frame, output);
+    EXPECT_FALSE(result.has_value());
 }

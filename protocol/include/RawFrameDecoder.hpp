@@ -27,6 +27,15 @@ private:
 
     [[nodiscard]]
     static bool inputBufferHaveEnoughSize(size_t inputBufferSize);
+
+    [[nodiscard]]
+    static bool putPackageKind(std::span<const uint8_t> buffer, PackageKind& kind, size_t& currentByte);
+
+    [[nodiscard]]
+    static bool putMessageType(std::span<const uint8_t> buffer, MessageType& type, size_t& currentByte);
+
+    /// @brief Transfiere dos bytes a un uint16_t en formato Big Endian
+    static void putTwoBytes(std::span<const uint8_t> buffer, uint16_t& value, size_t& currentByte);
 };
 
 #endif // !RAW_FRAME_DECODER

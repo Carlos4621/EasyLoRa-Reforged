@@ -13,16 +13,19 @@ bool RawFrameDecoder::decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer
 
     size_t currentByte{ 0 };
     frame.version = bufferWithoutCRC[currentByte++];
-    frame.kind = static_cast<PackageKind>(bufferWithoutCRC[currentByte++]);
+    
+    if (!putPackageKind(bufferWithoutCRC, frame.kind, currentByte)) {
+        return false;
+    }
+
     frame.flags = bufferWithoutCRC[currentByte++];
     frame.reserved = bufferWithoutCRC[currentByte++];
 
-    const auto seqHighByte{ bufferWithoutCRC[currentByte++] };
-    const auto seqLowByte{ bufferWithoutCRC[currentByte++] };
+    putTwoBytes(bufferWithoutCRC, frame.seq, currentByte);
 
-    frame.seq = bindTwoBytes(seqHighByte, seqLowByte);
-
-    frame.type = static_cast<MessageType>(bufferWithoutCRC[currentByte++]);
+    if (!putMessageType(bufferWithoutCRC, frame.type, currentByte)) {
+        return false;
+    }
 
     std::copy(bufferWithoutCRC.begin() + currentByte, bufferWithoutCRC.end(), frame.payload.begin());
 
@@ -44,4 +47,29 @@ bool RawFrameDecoder::isEnoughPayloadSize(size_t inputBufferSize, size_t framePa
 
 bool RawFrameDecoder::inputBufferHaveEnoughSize(size_t inputBufferSize) {
     return inputBufferSize >= (Frame::Header_Size + Frame::CRC_Size);
+}
+
+bool RawFrameDecoder::putPackageKind(std::span<const uint8_t> buffer, PackageKind& kind, size_t &currentByte) {
+    if (!isValidPackageKind(buffer[currentByte])) {
+        return false;
+    }
+    kind = static_cast<PackageKind>(buffer[currentByte++]);
+
+    return true;
+}
+
+bool RawFrameDecoder::putMessageType(std::span<const uint8_t> buffer, MessageType &type, size_t &currentByte) {
+    if (!isValidMessageType(buffer[currentByte])) {
+        return false;
+    }
+    type = static_cast<MessageType>(buffer[currentByte++]);
+
+    return true;
+}
+
+void RawFrameDecoder::putTwoBytes(std::span<const uint8_t> buffer, uint16_t& value, size_t &currentByte) {
+    const auto highByte{ buffer[currentByte++] };
+    const auto lowByte{ buffer[currentByte++] };
+
+    value = bindTwoBytes(highByte, lowByte);
 }

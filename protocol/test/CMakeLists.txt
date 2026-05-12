@@ -10,7 +10,7 @@ target_include_directories(raw_frame_tests PRIVATE
 
 target_link_libraries(raw_frame_tests PRIVATE GTest::gtest_main crcpp::crcpp)
 
-target_compile_features(raw_frame_tests PRIVATE cxx_std_20)
+target_compile_features(raw_frame_tests PRIVATE cxx_std_23)
 
 include(GoogleTest)
 

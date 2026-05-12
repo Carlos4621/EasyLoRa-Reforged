@@ -9,7 +9,26 @@ enum class MessageType : uint8_t {
     SetConfiguration,
     SendRadioPacket,
     RadioPacketReceived,
-    GenericError
+    GenericError,
 };
+
+[[nodiscard]]
+static constexpr bool isValidMessageType(uint8_t value) {
+    const auto castedValue{ static_cast<MessageType>(value) };
+
+    switch (castedValue) {
+    using enum MessageType;
+    case GetDeviceInfo:
+    case GetConfiguration:
+    case SetConfiguration:
+    case SendRadioPacket:
+    case RadioPacketReceived:
+    case GenericError:
+        return true;
+    
+    default:
+        return false;
+    }
+}
 
 #endif // !MESSAGE_TYPE_HEADER
