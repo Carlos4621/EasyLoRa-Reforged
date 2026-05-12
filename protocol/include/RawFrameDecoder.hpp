@@ -1,10 +1,11 @@
 #ifndef RAW_FRAME_DECODER
 #define RAW_FRAME_DECODER
 
-#include <optional>
+#include <expected>
 #include "CRC.h"
 #include "Frame.hpp"
 #include "BitsUtilities.hpp"
+#include "ProtocolErrors.hpp"
 
 /// @brief Clase encargada de decodificar un buffer codificado con RawFrameCodec
 class RawFrameDecoder {
@@ -15,7 +16,7 @@ public:
     /// @param frame Frame en el que se colocará la data decodificada
     /// @return true en caso de éxito, false sino
     [[nodiscard]]
-    static bool decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, Frame& frame) noexcept;
+    static std::expected<void, ProtocolErrors> decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, Frame& frame) noexcept;
 
 private:
 

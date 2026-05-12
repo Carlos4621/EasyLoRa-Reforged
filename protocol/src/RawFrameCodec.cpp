@@ -1,15 +1,15 @@
 #include "RawFrameCodec.hpp"
 
-std::optional<size_t> RawFrameCodec::encodeFrameToRaw(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept {
+std::expected<size_t, ProtocolErrors> RawFrameCodec::encodeFrameToRaw(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept {
     if (!isEnoughBufferSize(outputBuffer.size(), frame.payload.size())) {
-        return std::nullopt;
+        return std::unexpected(ProtocolErrors::BufferTooSmall);
     }
     
     size_t bytesWritten{ 0 };
     outputBuffer[bytesWritten++] = frame.version;
 
     if (!insertPackageKind(outputBuffer, std::to_underlying(frame.kind), bytesWritten)) {
-        return std::nullopt;
+        return std::unexpected(ProtocolErrors::InvalidPackageKind);
     }
     
     outputBuffer[bytesWritten++] = frame.flags;
@@ -17,7 +17,7 @@ std::optional<size_t> RawFrameCodec::encodeFrameToRaw(const Frame& frame, std::s
     insertTwoBytes(outputBuffer, frame.seq, bytesWritten);
 
     if (!insertMessageType(outputBuffer, std::to_underlying(frame.type), bytesWritten)) {
-        return std::nullopt;
+        return std::unexpected(ProtocolErrors::InvalidMessageType);
     }
 
     insertPayload(outputBuffer, frame, bytesWritten);

@@ -1,21 +1,23 @@
 #include "RawFrameDecoder.hpp"
 
-bool RawFrameDecoder::decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, Frame &frame) noexcept {
+std::expected<void, ProtocolErrors> RawFrameDecoder::decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, Frame &frame) noexcept {
     if (!inputBufferHaveEnoughSize(inputRawBuffer.size())) {
-        return false;
+        return std::unexpected(ProtocolErrors::BufferTooSmall);
     }
     
     const auto bufferWithoutCRC{ inputRawBuffer.first(inputRawBuffer.size() - Frame::CRC_Size) };
 
-    if (!isCRCValid(inputRawBuffer, bufferWithoutCRC) || !isEnoughPayloadSize(inputRawBuffer.size(), frame.payload.size())) {
-        return false;
+    if (!isCRCValid(inputRawBuffer, bufferWithoutCRC)) {
+        return std::unexpected(ProtocolErrors::CRCMissMatch);
+    } else if (!isEnoughPayloadSize(inputRawBuffer.size(), frame.payload.size())) {
+        return std::unexpected(ProtocolErrors::FramePayloadTooSmall);
     }
 
     size_t currentByte{ 0 };
     frame.version = bufferWithoutCRC[currentByte++];
     
     if (!putPackageKind(bufferWithoutCRC, frame.kind, currentByte)) {
-        return false;
+        return std::unexpected(ProtocolErrors::InvalidPackageKind);
     }
 
     frame.flags = bufferWithoutCRC[currentByte++];
@@ -24,12 +26,12 @@ bool RawFrameDecoder::decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer
     putTwoBytes(bufferWithoutCRC, frame.seq, currentByte);
 
     if (!putMessageType(bufferWithoutCRC, frame.type, currentByte)) {
-        return false;
+        return std::unexpected(ProtocolErrors::InvalidMessageType);
     }
 
     std::copy(bufferWithoutCRC.begin() + currentByte, bufferWithoutCRC.end(), frame.payload.begin());
 
-    return true;
+    return {};
 }
 
 bool RawFrameDecoder::isCRCValid(std::span<const uint8_t> buffer, std::span<const uint8_t> bufferWithoutCRC) {
@@ -42,7 +44,7 @@ bool RawFrameDecoder::isCRCValid(std::span<const uint8_t> buffer, std::span<cons
 }
 
 bool RawFrameDecoder::isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize) {
-    return framePayloadSize >= (inputBufferSize + Frame::Header_Size);
+    return framePayloadSize >= (inputBufferSize - Frame::Header_Size - Frame::CRC_Size);
 }
 
 bool RawFrameDecoder::inputBufferHaveEnoughSize(size_t inputBufferSize) {

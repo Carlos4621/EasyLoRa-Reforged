@@ -1,10 +1,11 @@
 #ifndef RAW_FRAME_CODEC_HEADER
 #define RAW_FRAME_CODEC_HEADER
 
-#include <optional>
+#include <expected>
 #include "Frame.hpp"
 #include "BitsUtilities.hpp"
 #include "CRC.h"
+#include "ProtocolErrors.hpp"
 
 /// @brief Clase encargada de codificar un Frame y agregar CRC. Para agregar COBS vease ProtocolBufferCodec
 class RawFrameCodec {
@@ -15,7 +16,7 @@ public:
     /// @param outputBuffer Buffer en el que se escribirá el contenido codificado y CRC
     /// @return std::optional<size_t> con los bytes escritos, en caso de error un std::nullopt
     [[nodiscard]]
-    static std::optional<size_t> encodeFrameToRaw(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept;
+    static std::expected<size_t, ProtocolErrors> encodeFrameToRaw(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept;
 
 private:
 
