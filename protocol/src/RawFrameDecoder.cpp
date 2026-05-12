@@ -1,9 +1,13 @@
 #include "RawFrameDecoder.hpp"
 
 bool RawFrameDecoder::decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, Frame &frame) noexcept {
+    if (!inputBufferHaveEnoughSize(inputRawBuffer.size())) {
+        return false;
+    }
+    
     const auto bufferWithoutCRC{ inputRawBuffer.first(inputRawBuffer.size() - Frame::CRC_Size) };
 
-    if (!isCRCValid(inputRawBuffer, bufferWithoutCRC)) {
+    if (!isCRCValid(inputRawBuffer, bufferWithoutCRC) || !isEnoughPayloadSize(inputRawBuffer.size(), frame.payload.size())) {
         return false;
     }
 
@@ -32,4 +36,12 @@ bool RawFrameDecoder::isCRCValid(std::span<const uint8_t> buffer, std::span<cons
     const auto receivedCRC{ bindTwoBytes(receivedCRCSpan[0], receivedCRCSpan[1]) };
 
     return (expectedCRC == receivedCRC);
+}
+
+bool RawFrameDecoder::isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize) {
+    return framePayloadSize >= (inputBufferSize + Frame::Header_Size);
+}
+
+bool RawFrameDecoder::inputBufferHaveEnoughSize(size_t inputBufferSize) {
+    return inputBufferSize >= (Frame::Header_Size + Frame::CRC_Size);
 }

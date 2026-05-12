@@ -21,6 +21,12 @@ private:
 
     [[nodiscard]]
     static bool isCRCValid(std::span<const uint8_t> buffer, std::span<const uint8_t> bufferWithoutCRC);
+
+    [[nodiscard]]
+    static bool isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize);
+
+    [[nodiscard]]
+    static bool inputBufferHaveEnoughSize(size_t inputBufferSize);
 };
 
 #endif // !RAW_FRAME_DECODER

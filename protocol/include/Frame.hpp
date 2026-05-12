@@ -15,7 +15,7 @@ struct Frame {
     MessageType type;
     std::span<uint8_t> payload;
 
-    static constexpr uint8_t Header_Size { 
+    static constexpr size_t Header_Size { 
         sizeof(version) +
         sizeof(kind) +
         sizeof(flags) +

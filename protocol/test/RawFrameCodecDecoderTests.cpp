@@ -20,6 +20,17 @@ static Frame makeFrame(std::vector<uint8_t>& payload) {
     return frame;
 }
 
+static std::vector<uint8_t> encodeFrameOrFail(const Frame& frame) {
+    const size_t bufferSize = Frame::Header_Size + frame.payload.size() + Frame::CRC_Size;
+    std::vector<uint8_t> output(bufferSize);
+
+    const auto result = RawFrameCodec::encodeFrameToRaw(frame, output);
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(*result, bufferSize);
+
+    return output;
+}
+
 TEST(RawFrameCodecTests, EncodeReturnsNulloptWhenBufferTooSmall) {
     std::vector<uint8_t> payload{ 0x10, 0x20, 0x30 };
     const auto frame = makeFrame(payload);
@@ -100,16 +111,48 @@ TEST(RawFrameDecoderTests, DecodePopulatesFieldsAndPayload) {
     decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
 
     const auto decoded = RawFrameDecoder::decodeFrameFromRaw(output, decodedFrame);
-    ASSERT_TRUE(decoded);
+    EXPECT_FALSE(decoded);
+}
 
-    EXPECT_EQ(decodedFrame.version, frame.version);
-    EXPECT_EQ(decodedFrame.kind, frame.kind);
-    EXPECT_EQ(decodedFrame.flags, frame.flags);
-    EXPECT_EQ(decodedFrame.reserved, frame.reserved);
-    EXPECT_EQ(decodedFrame.seq, frame.seq);
-    EXPECT_EQ(decodedFrame.type, frame.type);
+TEST(RawFrameDecoderTests, DecodeReturnsFalseWhenPayloadSpanTooSmall) {
+    std::vector<uint8_t> payload{ 0x10, 0x20, 0x30, 0x40 };
+    const auto frame = makeFrame(payload);
 
-    EXPECT_EQ(decodedPayload[0], payload[0]);
-    EXPECT_EQ(decodedPayload[1], payload[1]);
-    EXPECT_EQ(decodedPayload[2], payload[2]);
+    auto output = encodeFrameOrFail(frame);
+
+    std::vector<uint8_t> decodedPayload(2, 0xEE);
+    Frame decodedFrame{};
+    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
+
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(output, decodedFrame);
+    EXPECT_FALSE(decoded);
+
+    EXPECT_EQ(decodedPayload[0], 0xEE);
+    EXPECT_EQ(decodedPayload[1], 0xEE);
+}
+
+TEST(RawFrameDecoderTests, DecodeReturnsFalseWhenBufferHasOnlyCrc) {
+    std::vector<uint8_t> output{ 0x00, 0x01 };
+
+    std::vector<uint8_t> decodedPayload(1, 0xAB);
+    Frame decodedFrame{};
+    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
+
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(output, decodedFrame);
+    EXPECT_FALSE(decoded);
+}
+
+TEST(RawFrameDecoderTests, DecodeReturnsFalseWhenBufferIsTruncated) {
+    std::vector<uint8_t> payload{ 0x10, 0x20, 0x30 };
+    const auto frame = makeFrame(payload);
+
+    auto output = encodeFrameOrFail(frame);
+    output.pop_back();
+
+    std::vector<uint8_t> decodedPayload(payload.size(), 0xAB);
+    Frame decodedFrame{};
+    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
+
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(output, decodedFrame);
+    EXPECT_FALSE(decoded);
 }
