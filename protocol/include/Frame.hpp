@@ -6,6 +6,7 @@
 #include "PackageKind.hpp"
 #include "MessageType.hpp"
 
+/// @brief Estructura con los datos del protocolo
 struct Frame {
     uint8_t version;
     PackageKind kind;
@@ -13,7 +14,7 @@ struct Frame {
     uint8_t reserved;
     uint16_t seq;
     MessageType type;
-    std::span<uint8_t> payload;
+    std::span<const uint8_t> payload;
 
     static constexpr size_t Header_Size { 
         sizeof(version) +

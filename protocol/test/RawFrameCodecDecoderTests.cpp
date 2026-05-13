@@ -160,10 +160,7 @@ TEST(RawFrameDecoderTests, DecodeReturnsErrorWhenBufferTooSmall) {
     std::vector<uint8_t> raw(Frame::Header_Size + Frame::CRC_Size - 1, 0x00);
 
     std::vector<uint8_t> decodedPayload(1, 0xEE);
-    Frame decodedFrame{};
-    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
-
-    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedFrame);
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedPayload);
     EXPECT_FALSE(decoded.has_value());
     EXPECT_EQ(decoded.error(), ProtocolErrors::BufferTooSmall);
     EXPECT_EQ(decodedPayload[0], 0xEE);
@@ -175,10 +172,7 @@ TEST(RawFrameDecoderTests, DecodeReturnsErrorOnInvalidCrc) {
     raw.back() ^= 0xFF;
 
     std::vector<uint8_t> decodedPayload(payload.size(), 0xEE);
-    Frame decodedFrame{};
-    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
-
-    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedFrame);
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedPayload);
     EXPECT_FALSE(decoded.has_value());
     EXPECT_EQ(decoded.error(), ProtocolErrors::CRCMissMatch);
     EXPECT_TRUE(std::all_of(decodedPayload.begin(), decodedPayload.end(), [](uint8_t value) {
@@ -191,10 +185,7 @@ TEST(RawFrameDecoderTests, DecodeReturnsErrorWhenPayloadSpanTooSmall) {
     auto raw = buildRawBufferWithDefaults(kKindValue, kTypeValue, payload);
 
     std::vector<uint8_t> decodedPayload(2, 0xEE);
-    Frame decodedFrame{};
-    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
-
-    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedFrame);
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedPayload);
     EXPECT_FALSE(decoded.has_value());
     EXPECT_EQ(decoded.error(), ProtocolErrors::FramePayloadTooSmall);
     EXPECT_EQ(decodedPayload[0], 0xEE);
@@ -206,12 +197,10 @@ TEST(RawFrameDecoderTests, DecodePopulatesFieldsAndPayload) {
     auto raw = buildRawBufferWithDefaults(kKindValue, kTypeValue, payload);
 
     std::vector<uint8_t> decodedPayload(payload.size(), 0x00);
-    Frame decodedFrame{};
-    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
-
-    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedFrame);
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedPayload);
     ASSERT_TRUE(decoded.has_value());
 
+    const auto& decodedFrame = decoded.value();
     EXPECT_EQ(decodedFrame.version, kVersion);
     EXPECT_EQ(decodedFrame.kind, kKind);
     EXPECT_EQ(decodedFrame.flags, kFlags);
@@ -226,12 +215,11 @@ TEST(RawFrameDecoderTests, DecodeAllowsLargerPayloadSpan) {
     auto raw = buildRawBufferWithDefaults(kKindValue, kTypeValue, payload);
 
     std::vector<uint8_t> decodedPayload(6, 0xEE);
-    Frame decodedFrame{};
-    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
-
-    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedFrame);
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedPayload);
     ASSERT_TRUE(decoded.has_value());
 
+    const auto& decodedFrame = decoded.value();
+    EXPECT_EQ(decodedFrame.payload.size(), payload.size());
     EXPECT_TRUE(std::equal(payload.begin(), payload.end(), decodedPayload.begin()));
     EXPECT_EQ(decodedPayload[3], 0xEE);
     EXPECT_EQ(decodedPayload[4], 0xEE);
@@ -243,10 +231,7 @@ TEST(RawFrameDecoderTests, DecodeRejectsInvalidPackageKind) {
     auto raw = buildRawBufferWithDefaults(0xFF, kTypeValue, payload);
 
     std::vector<uint8_t> decodedPayload(payload.size(), 0x00);
-    Frame decodedFrame{};
-    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
-
-    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedFrame);
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedPayload);
     EXPECT_FALSE(decoded.has_value());
     EXPECT_EQ(decoded.error(), ProtocolErrors::InvalidPackageKind);
 }
@@ -256,10 +241,7 @@ TEST(RawFrameDecoderTests, DecodeRejectsInvalidMessageType) {
     auto raw = buildRawBufferWithDefaults(kKindValue, 0x99, payload);
 
     std::vector<uint8_t> decodedPayload(payload.size(), 0x00);
-    Frame decodedFrame{};
-    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
-
-    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedFrame);
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedPayload);
     EXPECT_FALSE(decoded.has_value());
     EXPECT_EQ(decoded.error(), ProtocolErrors::InvalidMessageType);
 }
@@ -269,17 +251,16 @@ TEST(RawFrameDecoderTests, DecodeSupportsEmptyPayload) {
     auto raw = buildRawBufferWithDefaults(kKindValue, kTypeValue, payload);
 
     std::vector<uint8_t> decodedPayload{};
-    Frame decodedFrame{};
-    decodedFrame.payload = std::span<uint8_t>(decodedPayload.data(), decodedPayload.size());
-
-    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedFrame);
+    const auto decoded = RawFrameDecoder::decodeFrameFromRaw(raw, decodedPayload);
     ASSERT_TRUE(decoded.has_value());
 
+    const auto& decodedFrame = decoded.value();
     EXPECT_EQ(decodedFrame.version, kVersion);
     EXPECT_EQ(decodedFrame.kind, kKind);
     EXPECT_EQ(decodedFrame.flags, kFlags);
     EXPECT_EQ(decodedFrame.reserved, kReserved);
     EXPECT_EQ(decodedFrame.seq, kSeq);
     EXPECT_EQ(decodedFrame.type, kType);
+    EXPECT_EQ(decodedFrame.payload.size(), 0U);
     EXPECT_EQ(decodedPayload.size(), 0U);
 }

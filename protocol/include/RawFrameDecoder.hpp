@@ -16,7 +16,7 @@ public:
     /// @param frame Frame en el que se colocará la data decodificada
     /// @return true en caso de éxito, false sino
     [[nodiscard]]
-    static std::expected<void, ProtocolErrors> decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, Frame& frame) noexcept;
+    static std::expected<Frame, ProtocolErrors> decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> outputBufferInFrame) noexcept;
 
 private:
 

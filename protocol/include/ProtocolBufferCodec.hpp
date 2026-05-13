@@ -7,12 +7,6 @@
 #include "Frame.hpp"
 #include "cobs/cobsr.h"
 #include "BitsUtilities.hpp"
-#include "CRC.h"
-#include "cobs/cobsr.h"
-
-/*
-    TODO:
-*/
 
 class ProtocolBufferCodec {
 public:
