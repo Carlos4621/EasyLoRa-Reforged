@@ -1,9 +1,9 @@
-#include <algorithm>
+#include <cstring>
 
 #include "RawFrameDecoder.hpp"
 
 std::expected<Frame, ProtocolErrors> RawFrameDecoder::decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> outputBufferInFrame) noexcept {
-    if (!inputBufferHaveEnoughSize(inputRawBuffer.size())) {
+    if (inputRawBuffer.size() < Minimum_Raw_Buffer_Size) {
         return std::unexpected(ProtocolErrors::BufferTooSmall);
     }
     
@@ -36,7 +36,9 @@ std::expected<Frame, ProtocolErrors> RawFrameDecoder::decodeFrameFromRaw(std::sp
     const size_t payloadSize{ bufferWithoutCRC.size() - currentByte };
     auto outputPayload{ outputBufferInFrame.first(payloadSize) };
 
-    std::copy_n(bufferWithoutCRC.begin() + currentByte, payloadSize, outputPayload.begin());
+    if (payloadSize > 0) {
+        std::memmove(outputPayload.data(), bufferWithoutCRC.data() + currentByte, payloadSize);
+    }
 
     outputFrame.payload = outputPayload;
 

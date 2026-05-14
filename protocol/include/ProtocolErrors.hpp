@@ -8,7 +8,10 @@ enum class ProtocolErrors : uint8_t {
     CRCMissMatch,
     FramePayloadTooSmall,
     InvalidPackageKind,
-    InvalidMessageType
+    InvalidMessageType,
+    COBSRError,
+    SameBufferError,
+    EmptyInputBuffer
 };
 
 #endif // !PROTOCOL_ERRORS_HEADER

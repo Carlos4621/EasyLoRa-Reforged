@@ -11,12 +11,15 @@
 class RawFrameDecoder {
 public:
 
-    /// @brief Decodifica el buffer y coloca el resultao en un Frame
+    static constexpr size_t Minimum_Raw_Buffer_Size{ Frame::Header_Size + Frame::CRC_Size };
+
+    /// @brief Decodifica el buffer y coloca el resultado en un Frame
     /// @param inputRawBuffer Buffer en donde se encuentra la data codificada
     /// @param frame Frame en el que se colocará la data decodificada
-    /// @return true en caso de éxito, false sino
+    /// @return std::expected con el frame en caso de éxito, ProtocolErrors en caso de error
     [[nodiscard]]
-    static std::expected<Frame, ProtocolErrors> decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> outputBufferInFrame) noexcept;
+    static std::expected<Frame, ProtocolErrors> decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, 
+        std::span<uint8_t> outputBufferInFrame) noexcept;
 
 private:
 

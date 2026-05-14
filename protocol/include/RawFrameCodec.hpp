@@ -14,9 +14,9 @@ public:
     /// @brief Codifica en bytes y añade CRC a los datos del frame  
     /// @param frame Frame a codificar
     /// @param outputBuffer Buffer en el que se escribirá el contenido codificado y CRC
-    /// @return std::optional<size_t> con los bytes escritos, en caso de error un std::nullopt
+    /// @return std::expected con un span el buffer que contiene los datos escritos
     [[nodiscard]]
-    static std::expected<size_t, ProtocolErrors> encodeFrameToRaw(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept;
+    static std::expected<std::span<uint8_t>, ProtocolErrors> encodeFrameToRaw(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept;
 
 private:
 

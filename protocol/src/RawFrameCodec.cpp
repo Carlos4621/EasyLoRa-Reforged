@@ -1,8 +1,16 @@
-#include "RawFrameCodec.hpp"
+#include <cstring>
 
-std::expected<size_t, ProtocolErrors> RawFrameCodec::encodeFrameToRaw(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept {
+#include "RawFrameCodec.hpp"
+#include "SpanUtilities.hpp"
+
+std::expected<std::span<uint8_t>, ProtocolErrors> RawFrameCodec::encodeFrameToRaw(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept {
     if (!isEnoughBufferSize(outputBuffer.size(), frame.payload.size())) {
         return std::unexpected(ProtocolErrors::BufferTooSmall);
+    }
+
+    const auto headerSpan = std::span<const uint8_t>(outputBuffer.first(Frame::Header_Size));
+    if (spansOverlap(frame.payload, headerSpan)) {
+        return std::unexpected(ProtocolErrors::SameBufferError);
     }
     
     size_t bytesWritten{ 0 };
@@ -23,7 +31,7 @@ std::expected<size_t, ProtocolErrors> RawFrameCodec::encodeFrameToRaw(const Fram
     insertPayload(outputBuffer, frame, bytesWritten);
     insertCRC(outputBuffer, bytesWritten);
 
-    return bytesWritten;
+    return outputBuffer.first(bytesWritten);
 }
 
 constexpr bool RawFrameCodec::isEnoughBufferSize(size_t bufferSize, size_t framePayloadSize) noexcept {
@@ -37,7 +45,9 @@ void RawFrameCodec::insertCRC(std::span<uint8_t> buffer, size_t& bytesWritten) n
 }
 
 void RawFrameCodec::insertPayload(std::span<uint8_t> buffer, const Frame& frame, size_t& bytesWritten) noexcept {
-    std::copy(frame.payload.begin(), frame.payload.end(), buffer.begin() + bytesWritten);
+    if (!frame.payload.empty()) {
+        std::memmove(buffer.data() + bytesWritten, frame.payload.data(), frame.payload.size());
+    }
     bytesWritten += frame.payload.size();
 }
 
