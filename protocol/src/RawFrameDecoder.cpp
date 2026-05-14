@@ -1,5 +1,3 @@
-#include <cstring>
-
 #include "RawFrameDecoder.hpp"
 
 std::expected<Frame, ProtocolErrors> RawFrameDecoder::decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> outputBufferInFrame) noexcept {

@@ -3,7 +3,6 @@
 
 #include <span>
 #include <expected>
-#include <algorithm>
 #include "Frame.hpp"
 #include "cobs/cobsr.h"
 #include "BitsUtilities.hpp"

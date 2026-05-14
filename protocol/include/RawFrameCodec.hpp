@@ -6,6 +6,8 @@
 #include "BitsUtilities.hpp"
 #include "CRC.h"
 #include "ProtocolErrors.hpp"
+#include <cstring>
+#include "SpanUtilities.hpp"
 
 /// @brief Clase encargada de codificar un Frame y agregar CRC. Para agregar COBS vease ProtocolBufferCodec
 class RawFrameCodec {

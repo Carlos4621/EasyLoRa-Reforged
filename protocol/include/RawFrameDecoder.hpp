@@ -2,10 +2,12 @@
 #define RAW_FRAME_DECODER
 
 #include <expected>
+#include <cstring>
 #include "CRC.h"
 #include "Frame.hpp"
 #include "BitsUtilities.hpp"
 #include "ProtocolErrors.hpp"
+#include "SpanUtilities.hpp"
 
 /// @brief Clase encargada de decodificar un buffer codificado con RawFrameCodec
 class RawFrameDecoder {

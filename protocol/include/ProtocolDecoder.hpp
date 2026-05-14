@@ -3,7 +3,6 @@
 
 #include <span>
 #include <expected>
-#include <cstdint>
 #include "ProtocolErrors.hpp"
 #include "cobs/cobsr.h"
 #include "SpanUtilities.hpp"
