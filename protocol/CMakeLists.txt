@@ -53,17 +53,122 @@ set_target_properties(crcpp::crcpp PROPERTIES
 	INTERFACE_INCLUDE_DIRECTORIES "${CRCPP_INCLUDE_DIR}"
 )
 
+# Protobuf / nanopb code generation
+option(EASYLORA_ENABLE_PROTOBUF "Generate protobuf code" ON)
+option(EASYLORA_ENABLE_NANOPB "Generate nanopb code" ON)
+
+set(GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/generated")
+set(PROTOBUF_GEN_DIR "${GENERATED_DIR}/protobuff")
+set(NANOPB_GEN_DIR "${GENERATED_DIR}/nanopb")
+
+file(GLOB PROTO_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/proto/*.proto")
+
+set(GENERATED_OUTPUTS "")
+
+if((EASYLORA_ENABLE_PROTOBUF OR EASYLORA_ENABLE_NANOPB) AND PROTO_FILES)
+	file(MAKE_DIRECTORY "${PROTOBUF_GEN_DIR}" "${NANOPB_GEN_DIR}")
+elseif(EASYLORA_ENABLE_PROTOBUF OR EASYLORA_ENABLE_NANOPB)
+	message(STATUS "No .proto files found in proto/; skipping code generation")
+endif()
+
+if(EASYLORA_ENABLE_PROTOBUF)
+	set(Protobuf_ROOT "" CACHE PATH "Root path for Protobuf install")
+	find_package(Protobuf REQUIRED)
+	if(NOT Protobuf_PROTOC_EXECUTABLE)
+		message(FATAL_ERROR "protoc not found. Install protobuf-compiler or set Protobuf_ROOT.")
+	endif()
+
+	foreach(PROTO_FILE IN LISTS PROTO_FILES)
+		get_filename_component(PROTO_NAME "${PROTO_FILE}" NAME_WE)
+		list(APPEND PROTOBUF_OUTPUTS
+			"${PROTOBUF_GEN_DIR}/${PROTO_NAME}.pb.cc"
+			"${PROTOBUF_GEN_DIR}/${PROTO_NAME}.pb.h"
+		)
+		add_custom_command(
+			OUTPUT
+				"${PROTOBUF_GEN_DIR}/${PROTO_NAME}.pb.cc"
+				"${PROTOBUF_GEN_DIR}/${PROTO_NAME}.pb.h"
+			COMMAND "${Protobuf_PROTOC_EXECUTABLE}"
+				--proto_path=${CMAKE_CURRENT_SOURCE_DIR}/proto
+				--cpp_out=${PROTOBUF_GEN_DIR}
+				${PROTO_FILE}
+			DEPENDS "${PROTO_FILE}"
+			COMMENT "Generating Protobuf for ${PROTO_NAME}"
+			VERBATIM
+		)
+	endforeach()
+
+	list(APPEND GENERATED_OUTPUTS ${PROTOBUF_OUTPUTS})
+endif()
+
+if(EASYLORA_ENABLE_NANOPB)
+	set(NANOPB_ROOT "" CACHE PATH "Root path for nanopb source (optional)")
+	if(NANOPB_ROOT)
+		set(NANOPB_SOURCE_DIR "${NANOPB_ROOT}")
+	else()
+		include(FetchContent)
+		FetchContent_Declare(
+			nanopb
+			GIT_REPOSITORY https://github.com/nanopb/nanopb.git
+			GIT_TAG 0.4.8
+		)
+		FetchContent_MakeAvailable(nanopb)
+		set(NANOPB_SOURCE_DIR "${nanopb_SOURCE_DIR}")
+	endif()
+
+	set(NANOPB_PLUGIN "${NANOPB_SOURCE_DIR}/generator/protoc-gen-nanopb")
+	if(NOT EXISTS "${NANOPB_PLUGIN}")
+		message(FATAL_ERROR "nanopb plugin not found at ${NANOPB_PLUGIN}")
+	endif()
+
+	if(NOT Protobuf_PROTOC_EXECUTABLE)
+		find_package(Protobuf REQUIRED)
+	endif()
+
+	foreach(PROTO_FILE IN LISTS PROTO_FILES)
+		get_filename_component(PROTO_NAME "${PROTO_FILE}" NAME_WE)
+		list(APPEND NANOPB_OUTPUTS
+			"${NANOPB_GEN_DIR}/${PROTO_NAME}.pb.c"
+			"${NANOPB_GEN_DIR}/${PROTO_NAME}.pb.h"
+		)
+		add_custom_command(
+			OUTPUT
+				"${NANOPB_GEN_DIR}/${PROTO_NAME}.pb.c"
+				"${NANOPB_GEN_DIR}/${PROTO_NAME}.pb.h"
+			COMMAND "${Protobuf_PROTOC_EXECUTABLE}"
+				--proto_path=${CMAKE_CURRENT_SOURCE_DIR}/proto
+				--plugin=protoc-gen-nanopb=${NANOPB_PLUGIN}
+				--nanopb_out=${NANOPB_GEN_DIR}
+				${PROTO_FILE}
+			DEPENDS "${PROTO_FILE}"
+			COMMENT "Generating nanopb for ${PROTO_NAME}"
+			VERBATIM
+		)
+	endforeach()
+
+	list(APPEND GENERATED_OUTPUTS ${NANOPB_OUTPUTS})
+endif()
+
+if(GENERATED_OUTPUTS)
+	add_custom_target(generate_protocol_code ALL DEPENDS ${GENERATED_OUTPUTS})
+endif()
+
 # Header-only base target until sources are added.
 add_library(easylora_protocol INTERFACE)
 add_library(EasyLoRa::protocol ALIAS easylora_protocol)
 
 target_include_directories(easylora_protocol INTERFACE
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+	$<BUILD_INTERFACE:${PROTOBUF_GEN_DIR}>
+	$<BUILD_INTERFACE:${NANOPB_GEN_DIR}>
 	$<INSTALL_INTERFACE:include>
 )
 
 target_link_libraries(easylora_protocol INTERFACE cobs::cobs)
 target_link_libraries(easylora_protocol INTERFACE crcpp::crcpp)
+if(TARGET nanopb)
+	target_link_libraries(easylora_protocol INTERFACE nanopb)
+endif()
 
 if(EASYLORA_BUILD_EXAMPLES)
 	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/CMakeLists.txt")
