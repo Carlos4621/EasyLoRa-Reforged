@@ -1,0 +1,1 @@
+En esta carpeta se recopila los headers en común para la API y firmware para el protocolo de envío y recepción de información
