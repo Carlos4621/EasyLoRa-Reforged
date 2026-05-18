@@ -1,0 +1,3 @@
+[submodule "firmware/lib/picoPins"]
+	path = firmware/lib/picoPins
+	url = https://github.com/Carlos4621/picoPins
