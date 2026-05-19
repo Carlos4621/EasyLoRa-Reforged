@@ -2,8 +2,8 @@
 
 cmake_minimum_required(VERSION 3.13)
 
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_C_STANDARD 23)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Initialise pico_sdk from installed location
@@ -34,13 +34,23 @@ project(firmware C CXX ASM)
 pico_sdk_init()
 
 # Protocol setup from ../protocol
+set(COBS_ROOT "/usr/local" CACHE PATH "" FORCE)
+set(COBS_INCLUDE_DIR "/usr/local/include/cobs" CACHE PATH "" FORCE)
+set(COBS_LIBRARY "/usr/local/lib/libcobs.a" CACHE FILEPATH "" FORCE)
+set(CRCPP_ROOT "/usr/local" CACHE PATH "" FORCE)
+set(CRCPP_INCLUDE_DIR "/usr/local/include" CACHE PATH "" FORCE)
 set(EASYLORA_ENABLE_PROTOBUF OFF CACHE BOOL "" FORCE)
-set(EASYLORA_ENABLE_NANOPB ON CACHE BOOL "" FORCE)
+set(EASYLORA_ENABLE_NANOPB OFF CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../protocol ${CMAKE_BINARY_DIR}/protocol)
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(firmware main.cpp )
+add_executable(firmware
+    main.cpp
+    lib/UARTWrapper/UARTWrapper.cpp
+    include/Instances.hpp
+    include/UART_IRQ.hpp
+)
 
 pico_set_program_name(firmware "firmware")
 pico_set_program_version(firmware "0.1")
@@ -57,6 +67,11 @@ target_link_libraries(firmware
 # Add the standard include files to the build
 target_include_directories(firmware PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}/lib/ByteTransport
+    ${CMAKE_CURRENT_LIST_DIR}/lib/Ring-Buffer
+    ${CMAKE_CURRENT_LIST_DIR}/lib/UARTWrapper
+    ${CMAKE_CURRENT_LIST_DIR}/lib/picoPins/include
+    ${CMAKE_CURRENT_LIST_DIR}/include
 )
 
 # Add any user requested libraries
