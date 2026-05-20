@@ -1,12 +1,12 @@
 #include "UARTWrapper.hpp"
 
-UARTWrapper::UARTWrapper(uart_inst_t* const uart)
+UARTWrapper::UARTWrapper(uart_inst_t* const uart) noexcept
 : uart_m{ uart }
 {
     assert(uart_m != nullptr && "La dirección del UART no puede ser nullptr");
 }
 
-std::expected<uint, UARTErrors> UARTWrapper::init(uint baudrate, uint8_t rxPin, uint8_t txPin) const {
+std::expected<uint, UARTErrors> UARTWrapper::init(uint baudrate, uint8_t rxPin, uint8_t txPin) const noexcept {
     const auto settedBaudrate(uart_init(uart_m, baudrate));
 
     if (settedBaudrate == 0) {
@@ -31,43 +31,43 @@ std::expected<uint, UARTErrors> UARTWrapper::init(uint baudrate, uint8_t rxPin, 
     return {};
 }
 
-uint8_t UARTWrapper::read() {
+uint8_t UARTWrapper::read() noexcept {
     return static_cast<uint8_t>(uart_getc(uart_m));
 }
 
-void UARTWrapper::write(uint8_t byte) {
+void UARTWrapper::write(uint8_t byte) noexcept {
     uart_putc_raw(uart_m, byte);
 }
 
-bool UARTWrapper::isInitializated() const {
+bool UARTWrapper::isInitializated() const noexcept {
     return uart_is_enabled(uart_m);
 }
 
-uart_inst_t* UARTWrapper::getUARTInstance() {
+uart_inst_t* UARTWrapper::getUARTInstance() noexcept {
     return uart_m;
 }
 
-bool UARTWrapper::isReadable() const {
+bool UARTWrapper::isReadable() const noexcept {
     return uart_is_readable(uart_m);
 }
 
-std::expected<void, UARTErrors> UARTWrapper::enableRxIRQ(bool enable) {
+std::expected<void, UARTErrors> UARTWrapper::enableRxIRQ(bool enable) noexcept {
     return enableIRQ(RxIRQEnabled, enable);
 }
 
-std::expected<void, UARTErrors> UARTWrapper::enableTxIRQ(bool enable) {
+std::expected<void, UARTErrors> UARTWrapper::enableTxIRQ(bool enable) noexcept {
     return enableIRQ(TxIRQEnabled, enable);
 }
 
-void UARTWrapper::setHandlerForIRQ(void (*function)()) const {
+void UARTWrapper::setHandlerForIRQ(void (*function)()) const noexcept {
     irq_set_exclusive_handler(UART_IRQ_NUM(uart_m), function);
 }
 
-bool UARTWrapper::isIRQHandlerSetted() {
+bool UARTWrapper::isIRQHandlerSetted() const noexcept {
     return irq_get_exclusive_handler(UART_IRQ_NUM(uart_m)) != nullptr;
 }
 
-std::expected<void, UARTErrors> UARTWrapper::enableIRQ(bool &IRQToEnable, bool enable) {
+std::expected<void, UARTErrors> UARTWrapper::enableIRQ(bool &IRQToEnable, bool enable) noexcept {
     if (enable && !isIRQHandlerSetted())  {
         return std::unexpected(UARTErrors::irqHandlerNotSetted);
     }
