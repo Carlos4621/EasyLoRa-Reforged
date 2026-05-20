@@ -50,6 +50,7 @@ add_executable(firmware
     lib/UARTWrapper/UARTWrapper.cpp
     include/Instances.hpp
     include/UART_IRQ.hpp
+    include/ValidPins.hpp
 )
 
 pico_set_program_name(firmware "firmware")

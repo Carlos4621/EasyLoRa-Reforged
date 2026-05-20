@@ -7,20 +7,20 @@
 #include <expected>
 #include <cstddef>
 #include <optional>
+#include <array>
 #include "hardware/irq.h"
+#include "hardware/gpio.h"
+#include "ValidPins.hpp"
 
 enum class UARTErrors : uint8_t {
-    UARTNotInitializated = 0,
-    BaudRateDontSupported,
-    IRQHandlerNotSetted,
+    uartNotInitializated = 0,
+    baudRateDontSupported,
+    irqHandlerNotSetted,
+    gpioNotSupportUartRx,
+    gpioNotSupportUartTx,
 };
 
-/*
-    TODO:
-        - Colocar const donde se debe
-*/
-
-/// @brief Wrapper de utilidad para UART
+/// @brief Wrapper de utilidad para UART de hardware
 class UARTWrapper : public ByteTransport {
 public:
 
@@ -32,8 +32,8 @@ public:
     /// @param baudRate Baudrate a colocar
     /// @return std::expected con uint indicando el baudrate colocado.
     ///         UARTErrors en caso de error.
-    ///         Si hay error EL OBJETO NO DEBE SER USADO
-    std::expected<uint, UARTErrors> init(uint baudrate);
+    ///         Si hay error NO SE GARANTIZA QUE EL OBJETO FUNCIONA
+    std::expected<uint, UARTErrors> init(uint baudrate, uint8_t rxPin, uint8_t txPin) const;
 
     /// @brief Lee un byte del FIFO Rx. Bloque hasta que se lee el byte
     /// @return Byte leído
@@ -46,7 +46,7 @@ public:
     /// @brief Comprueba si el puerto UART está inicializado
     /// @return true en caso afirmativo, false sino
     [[nodiscard]]
-    bool isInitializated();
+    bool isInitializated() const;
 
     /// @brief Devuelve el puntero al uart usuado al inicializar el objeto.
     ///        Cabe mencionar que los cambios realizados directamente con este puntero pueden ser invisibles para el objeto.
@@ -57,13 +57,13 @@ public:
     /// @brief Comprueba si hay bytes esperando en Rx
     /// @return true en caso afirmativo, false sino
     [[nodiscard]]
-    bool isReadable();
+    bool isReadable() const;
 
     /// @brief Activa o desactiva si se manda una señal IRQ al recibir bytes-
     /// Se debe colocar un handler a la IRQ antes de activarse
     /// @param enable Estado a colocar
     /// @return std::expected con void en caso de exito.
-    ///         UARTErrors::IRQHandlerNotSetted en caso de no haber handler en el IRQ
+    ///         UARTErrors::irqHandlerNotSetted en caso de no haber handler en el IRQ
     [[nodiscard]]
     std::expected<void, UARTErrors> enableRxIRQ(bool enable);
 
@@ -71,13 +71,13 @@ public:
     /// Se debe colocar un handler a la IRQ antes de activarse
     /// @param enable Estado a colocar
     /// @return std::expected con void en caso de exito.
-    ///         UARTErrors::IRQHandlerNotSetted en caso de no haber handler en el IRQ
+    ///         UARTErrors::irqHandlerNotSetted en caso de no haber handler en el IRQ
     [[nodiscard]]
     std::expected<void, UARTErrors> enableTxIRQ(bool enable);
 
     /// @brief Coloca un handler al IRQ. Debe ser colocado antes de habilitar las IRQ
     /// @param function Función handler a colocar
-    void setHandlerForIRQ(void(*function)());
+    void setHandlerForIRQ(void(*function)()) const;
 
 private:
     uart_inst_t* const uart_m;
