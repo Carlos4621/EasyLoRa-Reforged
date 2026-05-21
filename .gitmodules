@@ -1,3 +1,6 @@
 [submodule "firmware/lib/picoPins"]
 	path = firmware/lib/picoPins
 	url = https://github.com/Carlos4621/picoPins
+[submodule "firmware/lib/Ring-Buffer"]
+	path = firmware/lib/Ring-Buffer
+	url = https://github.com/jnk0le/Ring-Buffer

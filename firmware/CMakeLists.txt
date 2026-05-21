@@ -71,6 +71,7 @@ target_include_directories(firmware PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/ByteTransport
     ${CMAKE_CURRENT_LIST_DIR}/lib/Ring-Buffer
     ${CMAKE_CURRENT_LIST_DIR}/lib/UARTWrapper
+    ${CMAKE_CURRENT_LIST_DIR}/lib/FrameWaiter
     ${CMAKE_CURRENT_LIST_DIR}/lib/picoPins/include
     ${CMAKE_CURRENT_LIST_DIR}/include
 )
