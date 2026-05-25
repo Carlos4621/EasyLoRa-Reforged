@@ -3,6 +3,23 @@
 
 #include "ringbuffer.hpp"
 #include <cstdint>
+#include <atomic>
+#include <utility>
+
+/*
+    TODO:
+        - Asegurarse de que dropUntilDelimiter no provoca bucle infinito o problemático
+        - Agregar funcionalidad para lecturas incompletas de un frame
+*/
+
+enum class ReadFrameStatus : uint8_t {
+    OK = 0,
+    NoFrame,
+    BufferTooSmall,
+    BufferNullptr,
+    IncompleteFrame,
+    Overflow
+};
 
 /// @brief Clase que contabiliza los frames llegados y administra el ringbuffer. Se supone que se usa COBS con delimitador 0x00
 /// @tparam BufferSize Tamaño del ringbuffer
@@ -10,47 +27,59 @@ template<size_t BufferSize>
 class FrameWaiter {
 public:
 
-    /// @brief Añade un byte al buffer y lo analiza para indicar si hubo un frame completo llegado u overflow
+    explicit FrameWaiter(void (*callback)()) noexcept;
+
+    /// @brief Añade un byte al buffer y lo analiza para indicar si hubo un frame completo llegado u overflow.
     /// @param byte Byte a agregar
+    /// @warning Solo debe usarse por parte del productor
     void feed(uint8_t byte) noexcept;
 
-    /// @brief Indica si el último feed provocó un overflow
-    /// @return Indicación de overflow
+    /// @brief Intenta leer un frame del ring buffer
+    /// @param outputBuffer Puntero al buffer donde se colocarán los datos
+    /// @param bufferCapacity Capacidad máxima del buffer de salida
+    /// @param bytesWritten Número de bytes escritos en el buffer
+    /// @return Estado de la lectura
+    /// @warning Solo debe ser usado por parte del consumidor al recibir el callback
     [[nodiscard]]
-    bool wasOverflow() const noexcept;
-
-    /// @brief Regresa el número de frames que han llegado
-    /// @return Número de frames en el buffer
-    [[nodiscard]]
-    size_t framesInBuffer() const noexcept;
-
-    /// @brief Establece la función que se llamará en caso de que llegue un frame completo
-    /// @param callback Función a llamar
-    void setFrameReceivedCallback(void (*callback)()) noexcept;
+    ReadFrameStatus tryReadFrame(uint8_t* outputBuffer, size_t bufferCapacity, size_t& bytesWritten) noexcept;
 
 private:
     static constexpr uint8_t Packet_Delimiter{ 0x00 };
 
     jnk0le::Ringbuffer<uint8_t, BufferSize> buffer_m;
 
-    size_t framesInBuffer_m{ 0 };
-    bool wasOverflow_m{ false };
+    std::atomic<bool> overflow_m{ false };
+
+    volatile bool droppingBytes_m{ false };
 
     void (*callback_m)();
+
+    /// @brief Usado para descartar paquetes debido a fallos
+    void dropUntilDelimiter() noexcept;
 };
 
 template <size_t BufferSize>
+inline FrameWaiter<BufferSize>::FrameWaiter(void (*callback)()) noexcept 
+: callback_m{ callback }
+{
+}
+
+template <size_t BufferSize>
 inline void FrameWaiter<BufferSize>::feed(uint8_t byte) noexcept {
+    if (droppingBytes_m) {
+        if (byte == Packet_Delimiter) {
+            droppingBytes_m = false;
+        }
+        return;
+    }
+
     if (!buffer_m.insert(byte)) {
-        wasOverflow_m = true;
-        framesInBuffer_m = 0;
-        buffer_m.producerClear();
+        overflow_m.store(true);
+        droppingBytes_m = true;
         return;
     }
     
     if (byte == Packet_Delimiter) {
-        ++framesInBuffer_m;
-
         if (callback_m != nullptr) {
             callback_m();
         }
@@ -58,18 +87,42 @@ inline void FrameWaiter<BufferSize>::feed(uint8_t byte) noexcept {
 }
 
 template <size_t BufferSize>
-inline bool FrameWaiter<BufferSize>::wasOverflow() const noexcept {
-    return wasOverflow_m;
+inline ReadFrameStatus FrameWaiter<BufferSize>::tryReadFrame(uint8_t *outputBuffer, size_t bufferCapacity, size_t &bytesWritten) noexcept {
+    bytesWritten = 0;
+
+    if (outputBuffer == nullptr) {
+        return ReadFrameStatus::BufferNullptr;
+    }
+
+    uint8_t byte{};
+
+    while (buffer_m.remove(byte)) {
+        if (overflow_m) {
+            dropUntilDelimiter();
+            overflow_m.store(false);
+            return ReadFrameStatus::Overflow;
+        }
+        
+        if (byte == Packet_Delimiter) {
+            return ReadFrameStatus::OK;
+        }
+
+        if (bytesWritten == bufferCapacity) {
+            dropUntilDelimiter();
+            return ReadFrameStatus::BufferTooSmall;
+        }
+
+        outputBuffer[bytesWritten++] = byte;
+    }
+
+    return ReadFrameStatus::IncompleteFrame;
 }
 
 template <size_t BufferSize>
-inline size_t FrameWaiter<BufferSize>::framesInBuffer() const noexcept {
-    return framesInBuffer_m;
-}
+inline void FrameWaiter<BufferSize>::dropUntilDelimiter() noexcept {
+    uint8_t byte{};
 
-template <size_t BufferSize>
-inline void FrameWaiter<BufferSize>::setFrameReceivedCallback(void(*callback)()) noexcept {
-    callback_m = callback;
+    while (buffer_m.remove(byte) != Packet_Delimiter);
 }
 
 #endif // !FRAME_WAITER_HEADER

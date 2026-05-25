@@ -48,6 +48,8 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../protocol ${CMAKE_BINARY_DIR}/proto
 add_executable(firmware
     main.cpp
     lib/UARTWrapper/UARTWrapper.cpp
+    lib/FrameWaiter/FrameWaiter.hpp
+    lib/ByteTransport/ByteTransport.hpp
     include/Instances.hpp
     include/UART_IRQ.hpp
     include/ValidPins.hpp
