@@ -5,12 +5,7 @@
 #include <cstdint>
 #include <atomic>
 #include <utility>
-
-/*
-    TODO:
-        - Asegurarse de que dropUntilDelimiter no provoca bucle infinito o problemático
-        - Agregar funcionalidad para lecturas incompletas de un frame
-*/
+#include <cstring>
 
 enum class ReadFrameStatus : uint8_t {
     OK = 0,
@@ -27,6 +22,8 @@ template<size_t BufferSize>
 class FrameWaiter {
 public:
 
+    /// @brief Constructor base
+    /// @param callback Función a ser llamada al recibir un frame
     explicit FrameWaiter(void (*callback)()) noexcept;
 
     /// @brief Añade un byte al buffer y lo analiza para indicar si hubo un frame completo llegado u overflow.
@@ -39,7 +36,7 @@ public:
     /// @param bufferCapacity Capacidad máxima del buffer de salida
     /// @param bytesWritten Número de bytes escritos en el buffer
     /// @return Estado de la lectura
-    /// @warning Solo debe ser usado por parte del consumidor al recibir el callback
+    /// @warning Solo debe ser usado por parte del consumidor
     [[nodiscard]]
     ReadFrameStatus tryReadFrame(uint8_t* outputBuffer, size_t bufferCapacity, size_t& bytesWritten) noexcept;
 
@@ -47,35 +44,39 @@ private:
     static constexpr uint8_t Packet_Delimiter{ 0x00 };
 
     jnk0le::Ringbuffer<uint8_t, BufferSize> buffer_m;
+    std::array<uint8_t, BufferSize> pendingFrameBuffer_m;
+
+    size_t pendingFrameSize_m{ 0 };
 
     std::atomic<bool> overflow_m{ false };
 
-    volatile bool droppingBytes_m{ false };
+    volatile bool droppingFeedBytes_m{ false };
 
     void (*callback_m)();
 
     /// @brief Usado para descartar paquetes debido a fallos
-    void dropUntilDelimiter() noexcept;
+    void dropBufferUntilDelimiterOrEmpty() noexcept;
 };
 
 template <size_t BufferSize>
 inline FrameWaiter<BufferSize>::FrameWaiter(void (*callback)()) noexcept 
 : callback_m{ callback }
 {
+    assert(callback_m != nullptr && "callback can't be nullptr");
 }
 
 template <size_t BufferSize>
 inline void FrameWaiter<BufferSize>::feed(uint8_t byte) noexcept {
-    if (droppingBytes_m) {
+    if (droppingFeedBytes_m) {
         if (byte == Packet_Delimiter) {
-            droppingBytes_m = false;
+            droppingFeedBytes_m = false;
         }
         return;
     }
 
     if (!buffer_m.insert(byte)) {
         overflow_m.store(true);
-        droppingBytes_m = true;
+        droppingFeedBytes_m = true;
         return;
     }
     
@@ -96,35 +97,47 @@ inline ReadFrameStatus FrameWaiter<BufferSize>::tryReadFrame(uint8_t *outputBuff
 
     uint8_t byte{};
 
-    while (buffer_m.remove(byte)) {
-        if (overflow_m) {
-            dropUntilDelimiter();
-            overflow_m.store(false);
-            return ReadFrameStatus::Overflow;
-        }
-        
+    while (buffer_m.remove(byte)) {        
         if (byte == Packet_Delimiter) {
+            if (pendingFrameSize_m >= bufferCapacity) {
+                pendingFrameSize_m = 0;
+                return ReadFrameStatus::BufferTooSmall;
+            }
+            
+            std::memcpy(outputBuffer, &pendingFrameBuffer_m[0], pendingFrameSize_m);
+            bytesWritten = pendingFrameSize_m;
+
+            pendingFrameSize_m = 0;
             return ReadFrameStatus::OK;
         }
 
-        if (bytesWritten == bufferCapacity) {
-            dropUntilDelimiter();
+        if (pendingFrameSize_m >= pendingFrameBuffer_m.size()) {
+            dropBufferUntilDelimiterOrEmpty();
+            pendingFrameSize_m = 0;
             return ReadFrameStatus::BufferTooSmall;
         }
 
-        outputBuffer[bytesWritten++] = byte;
+        pendingFrameBuffer_m[pendingFrameSize_m++] = byte;
+    }
+
+    if (overflow_m.exchange(false)) {
+        dropBufferUntilDelimiterOrEmpty();
+        pendingFrameSize_m = 0;
+        return ReadFrameStatus::Overflow;
     }
 
     return ReadFrameStatus::IncompleteFrame;
 }
 
 template <size_t BufferSize>
-inline void FrameWaiter<BufferSize>::dropUntilDelimiter() noexcept {
+inline void FrameWaiter<BufferSize>::dropBufferUntilDelimiterOrEmpty() noexcept {
     uint8_t byte{};
 
-    do {
-        buffer_m.remove(byte);
-    } while (byte != Packet_Delimiter);
+    while (buffer_m.remove(byte)) {
+        if (byte == Packet_Delimiter) {
+            return;
+        }
+    }
 }
 
 #endif // !FRAME_WAITER_HEADER
