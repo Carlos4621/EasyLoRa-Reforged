@@ -122,7 +122,9 @@ template <size_t BufferSize>
 inline void FrameWaiter<BufferSize>::dropUntilDelimiter() noexcept {
     uint8_t byte{};
 
-    while (buffer_m.remove(byte) != Packet_Delimiter);
+    do {
+        buffer_m.remove(byte);
+    } while (byte != Packet_Delimiter);
 }
 
 #endif // !FRAME_WAITER_HEADER
