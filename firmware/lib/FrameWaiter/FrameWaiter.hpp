@@ -50,7 +50,7 @@ private:
 
     std::atomic<bool> overflow_m{ false };
 
-    volatile bool droppingFeedBytes_m{ false };
+    std::atomic<bool> droppingFeedBytes_m{ false };
 
     void (*callback_m)();
 
@@ -67,16 +67,16 @@ inline FrameWaiter<BufferSize>::FrameWaiter(void (*callback)()) noexcept
 
 template <size_t BufferSize>
 inline void FrameWaiter<BufferSize>::feed(uint8_t byte) noexcept {
-    if (droppingFeedBytes_m) {
+    if (droppingFeedBytes_m.load()) {
         if (byte == Packet_Delimiter) {
-            droppingFeedBytes_m = false;
+            droppingFeedBytes_m.store(false);
         }
         return;
     }
 
     if (!buffer_m.insert(byte)) {
         overflow_m.store(true);
-        droppingFeedBytes_m = true;
+        droppingFeedBytes_m.store(true);
         return;
     }
     
@@ -99,7 +99,7 @@ inline ReadFrameStatus FrameWaiter<BufferSize>::tryReadFrame(uint8_t *outputBuff
 
     while (buffer_m.remove(byte)) {        
         if (byte == Packet_Delimiter) {
-            if (pendingFrameSize_m >= bufferCapacity) {
+            if (pendingFrameSize_m > bufferCapacity) {
                 pendingFrameSize_m = 0;
                 return ReadFrameStatus::BufferTooSmall;
             }
@@ -111,7 +111,7 @@ inline ReadFrameStatus FrameWaiter<BufferSize>::tryReadFrame(uint8_t *outputBuff
             return ReadFrameStatus::OK;
         }
 
-        if (pendingFrameSize_m >= pendingFrameBuffer_m.size()) {
+        if (pendingFrameSize_m > pendingFrameBuffer_m.size()) {
             dropBufferUntilDelimiterOrEmpty();
             pendingFrameSize_m = 0;
             return ReadFrameStatus::BufferTooSmall;
