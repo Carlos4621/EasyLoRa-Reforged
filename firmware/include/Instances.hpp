@@ -20,6 +20,6 @@ static constexpr size_t Tx_Buffer_Size{ 512 };
 static constexpr size_t Rx_Buffer_Size{ 512 };
 
 static jnk0le::Ringbuffer<uint8_t, Tx_Buffer_Size> Tx_Buffer;
-static FrameWaiter<Rx_Buffer_Size> Rx_FrameWaiter{ __sev };
+static FrameWaiter<Rx_Buffer_Size> UART_0_FameWaiter{ __sev };
 
 #endif // !INSTANCES_HEADER

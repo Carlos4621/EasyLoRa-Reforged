@@ -18,7 +18,7 @@ static void initialize_UART_0_IRQ(uint rxPin, uint txPin) {
 
 static void UART_0_IRQ_Handler() {
     while (UART_0_Wrapper.isReadable()) {
-        Rx_FrameWaiter.feed(UART_0_Wrapper.read());
+        UART_0_FameWaiter.feed(UART_0_Wrapper.read());
     }
 }
 
