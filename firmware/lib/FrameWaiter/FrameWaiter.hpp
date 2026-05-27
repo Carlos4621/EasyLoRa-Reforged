@@ -3,7 +3,9 @@
 
 #include "ringbuffer.hpp"
 #include <cstdint>
+#include <array>
 #include <atomic>
+#include <cassert>
 #include <utility>
 #include <cstring>
 
@@ -111,7 +113,7 @@ inline ReadFrameStatus FrameWaiter<BufferSize>::tryReadFrame(uint8_t *outputBuff
             return ReadFrameStatus::OK;
         }
 
-        if (pendingFrameSize_m > pendingFrameBuffer_m.size()) {
+        if (pendingFrameSize_m >= pendingFrameBuffer_m.size()) {
             dropBufferUntilDelimiterOrEmpty();
             pendingFrameSize_m = 0;
             return ReadFrameStatus::BufferTooSmall;
