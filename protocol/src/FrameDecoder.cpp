@@ -1,6 +1,6 @@
-#include "RawFrameDecoder.hpp"
+#include "FrameDecoder.hpp"
 
-std::expected<Frame, ProtocolErrors> RawFrameDecoder::decodeFrameFromRaw(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> outputBufferInFrame) noexcept {
+std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> outputPayloadInFrame) noexcept {
     if (inputRawBuffer.size() < Minimum_Raw_Buffer_Size) {
         return std::unexpected(ProtocolErrors::BufferTooSmall);
     }
@@ -9,7 +9,7 @@ std::expected<Frame, ProtocolErrors> RawFrameDecoder::decodeFrameFromRaw(std::sp
 
     if (!isCRCValid(inputRawBuffer, bufferWithoutCRC)) {
         return std::unexpected(ProtocolErrors::CRCMissMatch);
-    } else if (!isEnoughPayloadSize(inputRawBuffer.size(), outputBufferInFrame.size())) {
+    } else if (!isEnoughPayloadSize(inputRawBuffer.size(), outputPayloadInFrame.size())) {
         return std::unexpected(ProtocolErrors::FramePayloadTooSmall);
     }
 
@@ -32,7 +32,7 @@ std::expected<Frame, ProtocolErrors> RawFrameDecoder::decodeFrameFromRaw(std::sp
     }
 
     const size_t payloadSize{ bufferWithoutCRC.size() - currentByte };
-    auto outputPayload{ outputBufferInFrame.first(payloadSize) };
+    auto outputPayload{ outputPayloadInFrame.first(payloadSize) };
 
     if (payloadSize > 0) {
         std::memmove(outputPayload.data(), bufferWithoutCRC.data() + currentByte, payloadSize);
@@ -43,7 +43,7 @@ std::expected<Frame, ProtocolErrors> RawFrameDecoder::decodeFrameFromRaw(std::sp
     return outputFrame;
 }
 
-bool RawFrameDecoder::isCRCValid(std::span<const uint8_t> buffer, std::span<const uint8_t> bufferWithoutCRC) {
+bool FrameDecoder::isCRCValid(std::span<const uint8_t> buffer, std::span<const uint8_t> bufferWithoutCRC) {
     const auto expectedCRC{ CRC::Calculate(&bufferWithoutCRC[0], bufferWithoutCRC.size(), CRC::CRC_16_CCITTFALSE()) };
 
     const auto receivedCRCSpan{ buffer.last(Frame::CRC_Size) };
@@ -52,15 +52,15 @@ bool RawFrameDecoder::isCRCValid(std::span<const uint8_t> buffer, std::span<cons
     return (expectedCRC == receivedCRC);
 }
 
-bool RawFrameDecoder::isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize) {
+bool FrameDecoder::isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize) {
     return framePayloadSize >= (inputBufferSize - Frame::Header_Size - Frame::CRC_Size);
 }
 
-bool RawFrameDecoder::inputBufferHaveEnoughSize(size_t inputBufferSize) {
+bool FrameDecoder::inputBufferHaveEnoughSize(size_t inputBufferSize) {
     return inputBufferSize >= (Frame::Header_Size + Frame::CRC_Size);
 }
 
-bool RawFrameDecoder::putPackageKind(std::span<const uint8_t> buffer, PackageKind& kind, size_t &currentByte) {
+bool FrameDecoder::putPackageKind(std::span<const uint8_t> buffer, PackageKind& kind, size_t &currentByte) {
     if (!isValidPackageKind(buffer[currentByte])) {
         return false;
     }
@@ -69,7 +69,7 @@ bool RawFrameDecoder::putPackageKind(std::span<const uint8_t> buffer, PackageKin
     return true;
 }
 
-bool RawFrameDecoder::putMessageType(std::span<const uint8_t> buffer, MessageType &type, size_t &currentByte) {
+bool FrameDecoder::putMessageType(std::span<const uint8_t> buffer, MessageType &type, size_t &currentByte) {
     if (!isValidMessageType(buffer[currentByte])) {
         return false;
     }
@@ -78,7 +78,7 @@ bool RawFrameDecoder::putMessageType(std::span<const uint8_t> buffer, MessageTyp
     return true;
 }
 
-void RawFrameDecoder::putTwoBytes(std::span<const uint8_t> buffer, uint16_t& value, size_t &currentByte) {
+void FrameDecoder::putTwoBytes(std::span<const uint8_t> buffer, uint16_t& value, size_t &currentByte) {
     const auto highByte{ buffer[currentByte++] };
     const auto lowByte{ buffer[currentByte++] };
 

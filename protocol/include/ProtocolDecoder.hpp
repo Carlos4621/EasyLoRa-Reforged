@@ -1,22 +1,20 @@
 #ifndef PROTOCOL_DECODER_HEADER
 #define PROTOCOL_DECODER_HEADER
 
-#include <span>
-#include <expected>
-#include "ProtocolErrors.hpp"
-#include "cobs/cobsr.h"
-#include "SpanUtilities.hpp"
+#include "FrameDecoder.hpp"
+#include "CobsrDecoder.hpp"
 
-/// @brief Clase que decodifica un buffer previamente codificado con ProtocolCodec
+/// @brief Clase que decodifica un frame recibido y previamente codificado con ProtocolCodec
 class ProtocolDecoder {
 public:
 
-    /// @brief Decodifica un buffer codificao con ProtocolCodec y lo coloca en el buffer de salida
-    /// @param encodedBuffer Buffer codificado
-    /// @param outputBuffer Buffer en el que se colocará el resultado
-    /// @return Span del buffer que contiene los elementos decodificados
+    /// @brief Decodifica un frame previamente codificado con ProtocolCodec
+    /// @param inputBuffer Buffer donde se localiza el frame codificado
+    /// @param frameBytes Buffer intermedio donde se guardará el frame después de decodificar COBS/R
+    /// @param payloadInFrame Buffer donde se guarda el payload del frame
+    /// @return std::expected con Frame en caso de éxito, en caso de error un ProtocolErrors
     [[nodiscard]]
-    static std::expected<std::span<uint8_t>, ProtocolErrors> decodeToRaw(std::span<const uint8_t> encodedBuffer, std::span<uint8_t> outputBuffer);
+    static std::expected<Frame, ProtocolErrors> decode(std::span<const uint8_t> inputBuffer, std::span<uint8_t> frameBytes, std::span<uint8_t> payloadInFrame) noexcept;
 };
 
 #endif // !PROTOCOL_DECODER_HEADER

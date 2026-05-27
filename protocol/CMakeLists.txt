@@ -55,7 +55,7 @@ set_target_properties(crcpp::crcpp PROPERTIES
 
 # Protobuf / nanopb code generation
 option(EASYLORA_ENABLE_PROTOBUF "Generate protobuf code" ON)
-option(EASYLORA_ENABLE_NANOPB "Generate nanopb code" ON)
+option(EASYLORA_ENABLE_NANOPB "Generate nanopb code" OFF)
 
 set(GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/generated")
 set(PROTOBUF_GEN_DIR "${GENERATED_DIR}/protobuff")
@@ -179,6 +179,7 @@ if(EASYLORA_BUILD_EXAMPLES)
 endif()
 
 if(EASYLORA_BUILD_TESTS)
+	include(CTest)
 	include(FetchContent)
 	set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 	set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)

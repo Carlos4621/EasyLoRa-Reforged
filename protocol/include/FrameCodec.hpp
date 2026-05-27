@@ -1,5 +1,5 @@
-#ifndef RAW_FRAME_CODEC_HEADER
-#define RAW_FRAME_CODEC_HEADER
+#ifndef FRAME_CODEC_HEADER
+#define FRAME_CODEC_HEADER
 
 #include <expected>
 #include "Frame.hpp"
@@ -9,16 +9,16 @@
 #include <cstring>
 #include "SpanUtilities.hpp"
 
-/// @brief Clase encargada de codificar un Frame y agregar CRC. Para agregar COBS vease ProtocolBufferCodec
-class RawFrameCodec {
+/// @brief Clase encargada de codificar un Frame a bytes y agregar CRC.
+class FrameCodec {
 public:
 
-    /// @brief Codifica en bytes y añade CRC a los datos del frame  
+    /// @brief Convierte a bytes un Frame y coloca su correspondiente CRC 
     /// @param frame Frame a codificar
     /// @param outputBuffer Buffer en el que se escribirá el contenido codificado y CRC
-    /// @return std::expected con un span el buffer que contiene los datos escritos
+    /// @return std::expected con std::span el buffer que contiene los datos escritos, en caso de error devuelve un ProtocolError
     [[nodiscard]]
-    static std::expected<std::span<uint8_t>, ProtocolErrors> encodeFrameToRaw(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept;
+    static std::expected<std::span<uint8_t>, ProtocolErrors> encode(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept;
 
 private:
 
@@ -39,4 +39,4 @@ private:
     static void insertTwoBytes(std::span<uint8_t> buffer, uint16_t value, size_t& bytesWritten);
 };
 
-#endif // !RAW_FRAME_CODEC_HEADER
+#endif // !FRAME_CODEC_HEADER
