@@ -6,7 +6,7 @@
 #include "PackageKind.hpp"
 #include "MessageType.hpp"
 
-/// @brief Estructura con los datos del protocolo
+/// @brief Estructura con los datos necesarios para un Frame
 struct Frame {
     uint8_t version;
     PackageKind kind;

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 
+/// @brief Motivo por el que se envía o recibe el Frame
 enum class PackageKind : uint8_t {
     Request = 1,
     Response,
@@ -10,6 +11,9 @@ enum class PackageKind : uint8_t {
     Error
 };
 
+/// @brief Determina si un valor corresponde a un miembro de PackageKind
+/// @param value Valor a evaluar
+/// @return True en caso de ser un miembro de PackageKind
 [[nodiscard]]
 static constexpr bool isValidPackageKind(uint8_t value) {
     const auto castedValue{ static_cast<PackageKind>(value) };

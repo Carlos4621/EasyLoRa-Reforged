@@ -3,6 +3,7 @@
 
 #include <cstdint>
 
+/// @brief Tipo de mensaje que comunica el Frame
 enum class MessageType : uint8_t {
     GetDeviceInfo = 1,
     GetConfiguration,
@@ -12,6 +13,9 @@ enum class MessageType : uint8_t {
     GenericError,
 };
 
+/// @brief Valida si el valor enviado corresponde correctamente a un miembro de MessageType
+/// @param value Valor a validar
+/// @return Si el valor corresponde a un miembro de MessageType
 [[nodiscard]]
 static constexpr bool isValidMessageType(uint8_t value) {
     const auto castedValue{ static_cast<MessageType>(value) };
