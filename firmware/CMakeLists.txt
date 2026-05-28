@@ -26,6 +26,24 @@ if (NOT FIRMWARE_BUILD_TESTS)
     if (EXISTS ${picoVscode})
         include(${picoVscode})
     endif()
+
+    if (PICO_TOOLCHAIN_PATH)
+        # Recover from empty compiler paths injected by some kits.
+        if (DEFINED CMAKE_C_COMPILER AND CMAKE_C_COMPILER STREQUAL "")
+            set(_pico_cc "${PICO_TOOLCHAIN_PATH}/bin/arm-none-eabi-gcc")
+            if (EXISTS "${_pico_cc}")
+                set(CMAKE_C_COMPILER "${_pico_cc}" CACHE FILEPATH "C compiler" FORCE)
+            endif()
+            unset(_pico_cc)
+        endif()
+        if (DEFINED CMAKE_CXX_COMPILER AND CMAKE_CXX_COMPILER STREQUAL "")
+            set(_pico_cxx "${PICO_TOOLCHAIN_PATH}/bin/arm-none-eabi-g++")
+            if (EXISTS "${_pico_cxx}")
+                set(CMAKE_CXX_COMPILER "${_pico_cxx}" CACHE FILEPATH "C++ compiler" FORCE)
+            endif()
+            unset(_pico_cxx)
+        endif()
+    endif()
     # ====================================================================================
     set(PICO_BOARD pico2 CACHE STRING "Board type")
 
@@ -55,9 +73,9 @@ if (NOT FIRMWARE_BUILD_TESTS)
         lib/UARTWrapper/UARTWrapper.cpp
         lib/FrameWaiter/FrameWaiter.hpp
         lib/ByteTransport/ByteTransport.hpp
-        include/Instances.hpp
-        include/UART_IRQ.hpp
         include/ValidPins.hpp
+        lib/Core_1/Core_1.hpp
+        lib/Core_0/Core_0.hpp
     )
 
     pico_set_program_name(firmware "firmware")
@@ -80,6 +98,8 @@ if (NOT FIRMWARE_BUILD_TESTS)
         ${CMAKE_CURRENT_LIST_DIR}/lib/UARTWrapper
         ${CMAKE_CURRENT_LIST_DIR}/lib/FrameWaiter
         ${CMAKE_CURRENT_LIST_DIR}/lib/picoPins/include
+        ${CMAKE_CURRENT_LIST_DIR}/lib/Core_1
+        ${CMAKE_CURRENT_LIST_DIR}/lib/Core_0
         ${CMAKE_CURRENT_LIST_DIR}/include
     )
 
