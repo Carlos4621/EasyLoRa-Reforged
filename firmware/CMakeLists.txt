@@ -74,8 +74,11 @@ if (NOT FIRMWARE_BUILD_TESTS)
         lib/FrameWaiter/FrameWaiter.hpp
         lib/ByteTransport/ByteTransport.hpp
         include/ValidPins.hpp
-        lib/Core_1/Core_1.hpp
+        lib/Core_1/Core_1.cpp
         lib/Core_0/Core_0.hpp
+        lib/Core_0/Core_0.cpp
+        include/TxFrame.hpp
+        lib/FrameResponder/FrameResponder.cpp
     )
 
     pico_set_program_name(firmware "firmware")

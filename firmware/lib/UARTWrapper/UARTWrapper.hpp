@@ -39,6 +39,7 @@ public:
 
     /// @brief Lee un byte del FIFO Rx. Bloque hasta que se lee el byte
     /// @return Byte leído
+    [[maybe_unused]]
     uint8_t read() noexcept override;
 
     /// @brief Escribe un byte en el FIFO Tx. Bloque hasta enviar el byte

@@ -5,7 +5,7 @@
 
 /// @brief Motivo por el que se envía o recibe el Frame
 enum class PackageKind : uint8_t {
-    Request = 1,
+    Request = 0,
     Response,
     Event,
     Error

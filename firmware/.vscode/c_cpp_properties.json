@@ -5,7 +5,9 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${userHome}/.pico-sdk/sdk/2.2.0/**",
-                "/home/carlos4621/EasyLoRa-Reforged/protocol/include"
+                "/home/carlos4621/EasyLoRa-Reforged/protocol/include",
+                "/home/carlos4621/EasyLoRa-Reforged/firmware/include",
+                "/usr/local/include"
             ],
             "forcedInclude": [
                 "${workspaceFolder}/build/generated/pico_base/pico/config_autogen.h",

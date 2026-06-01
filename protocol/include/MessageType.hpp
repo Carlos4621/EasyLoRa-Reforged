@@ -5,7 +5,7 @@
 
 /// @brief Tipo de mensaje que comunica el Frame
 enum class MessageType : uint8_t {
-    GetDeviceInfo = 1,
+    GetDeviceInfo = 0,
     GetConfiguration,
     SetConfiguration,
     SendRadioPacket,

@@ -4,6 +4,11 @@
 #include "hardware/sync.h"
 #include <array>
 #include "ProtocolDecoder.hpp"
+#include "Instances.hpp"
+
+/*
+    TODO: Terminar estas clases
+*/
 
 /// @brief Clase que representa al Core 1, el core se encarga de la codificación, decodificación y armado de respuestas
 ///        También notifica al Core 0 en caso de un paquete Tx listo para ser enviado
@@ -15,11 +20,11 @@ public:
     static void main() noexcept;
 
 private:
-    uint8_t bytesWritten_m{ 0 };
+    static size_t bytesWritten_m;
 
-    std::array<uint8_t, Rx_Buffer_Size> codifiedBuffer_m;
-    std::array<uint8_t, Rx_Buffer_Size> frameBytes_m;
-    std::array<uint8_t, Rx_Buffer_Size - Frame::Header_Size> framePayload_m;
+    static std::array<uint8_t, Rx_Buffer_Size> codifiedBuffer_m;
+    static std::array<uint8_t, Rx_Buffer_Size> frameBytes_m;
+    static std::array<uint8_t, Rx_Buffer_Size - Frame::Header_Size> framePayload_m;
 };
 
 #endif // !CORE_1_MAIN_HEADER
