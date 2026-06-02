@@ -65,7 +65,19 @@ if (NOT FIRMWARE_BUILD_TESTS)
     set(CRCPP_INCLUDE_DIR "/usr/local/include" CACHE PATH "" FORCE)
     set(EASYLORA_ENABLE_PROTOBUF OFF CACHE BOOL "" FORCE)
     set(EASYLORA_ENABLE_NANOPB OFF CACHE BOOL "" FORCE)
+    if (NOT TARGET protobuf-nanopb-static AND NOT TARGET protobuf-nanopb)
+        include(FetchContent)
+        FetchContent_Declare(
+            nanopb
+            GIT_REPOSITORY https://github.com/nanopb/nanopb.git
+            GIT_TAG 0.4.8
+        )
+        FetchContent_MakeAvailable(nanopb)
+    endif()
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../protocol ${CMAKE_BINARY_DIR}/protocol)
+
+    set(NANOPB_GEN_DIR "${CMAKE_CURRENT_LIST_DIR}/../protocol/generated/nanopb")
+    file(GLOB NANOPB_GEN_SOURCES CONFIGURE_DEPENDS "${NANOPB_GEN_DIR}/*.pb.c")
 
     # Add executable. Default name is the project name, version 0.1
     add_executable(firmware
@@ -79,7 +91,10 @@ if (NOT FIRMWARE_BUILD_TESTS)
         lib/Core_0/Core_0.cpp
         include/TxFrame.hpp
         lib/FrameResponder/FrameResponder.cpp
+        lib/GetDeviceInfoHandler/GetDeviceInfoHandler.cpp
     )
+
+    target_sources(firmware PRIVATE ${NANOPB_GEN_SOURCES})
 
     pico_set_program_name(firmware "firmware")
     pico_set_program_version(firmware "0.1")
@@ -89,9 +104,14 @@ if (NOT FIRMWARE_BUILD_TESTS)
     pico_enable_stdio_usb(firmware 1)
 
     # Add the standard library to the build
-    target_link_libraries(firmware
+    target_link_libraries(firmware PRIVATE
         pico_stdlib
         EasyLoRa::protocol)
+    if (TARGET protobuf-nanopb-static)
+        target_link_libraries(firmware PRIVATE protobuf-nanopb-static)
+    elseif (TARGET protobuf-nanopb)
+        target_link_libraries(firmware PRIVATE protobuf-nanopb)
+    endif()
 
     # Add the standard include files to the build
     target_include_directories(firmware PRIVATE
@@ -104,12 +124,14 @@ if (NOT FIRMWARE_BUILD_TESTS)
         ${CMAKE_CURRENT_LIST_DIR}/lib/Core_1
         ${CMAKE_CURRENT_LIST_DIR}/lib/Core_0
         ${CMAKE_CURRENT_LIST_DIR}/include
+        ${CMAKE_CURRENT_LIST_DIR}/lib/GetDeviceInfoHandler
+        ${NANOPB_GEN_DIR}
     )
 
     # Add any user requested libraries
-    target_link_libraries(firmware 
-            hardware_i2c
-            )
+    target_link_libraries(firmware PRIVATE
+        hardware_i2c
+    )
 
     pico_add_extra_outputs(firmware)
 endif()

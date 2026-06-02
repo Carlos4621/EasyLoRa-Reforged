@@ -6,10 +6,6 @@
 #include "ProtocolDecoder.hpp"
 #include "Instances.hpp"
 
-/*
-    TODO: Terminar estas clases
-*/
-
 /// @brief Clase que representa al Core 1, el core se encarga de la codificación, decodificación y armado de respuestas
 ///        También notifica al Core 0 en caso de un paquete Tx listo para ser enviado
 class Core_1 final {

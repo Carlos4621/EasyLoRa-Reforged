@@ -1,12 +1,11 @@
 #ifndef INSTANCES_HEADER
 #define INSTANCES_HEADER
 
+#include "BufferSizes.hpp"
 #include "UARTWrapper.hpp"
 #include "FrameWaiter.hpp"
 #include "TxFrame.hpp"
-
-static constexpr size_t Rx_Buffer_Size{ 512 };
-static constexpr size_t Tx_Buffer_Frame_Instances_Size{ 8 };
+#include "hardware/sync.h"
 
 static UARTWrapper UART_0_Wrapper{ uart0 };
 static UARTWrapper UART_1_Wrapper{ uart1 };
