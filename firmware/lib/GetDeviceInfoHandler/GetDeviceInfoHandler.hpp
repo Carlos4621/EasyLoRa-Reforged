@@ -6,13 +6,21 @@
 #include <expected>
 #include <cstdint>
 #include <string>
+#include <cstring>
+#include <utility>
 #include "pb.h"
+#include "pb_encode.h"
 #include "DeviceInfo.pb.h"
-#include "NanopbCallbacks.hpp"
 
+/// @brief Handler que arma respuestas para Frames con MessageType::GetDeviceInfo
 class GetDeviceInfoHandle {
 public:
 
+    /// @brief Arma la respuesta del Frame
+    /// @param frame Frame a responder
+    /// @param framePayloadBuffer Buffer donde se escribirá el payload del frame de respuesta
+    /// @param bytesWritten Bytes escritos en el payload
+    /// @return std::expected con Frame en caso de éxito, sino ProtocolErrors
     [[nodiscard]]
     static std::expected<Frame, ProtocolErrors> handle(const Frame& frame, std::span<uint8_t> framePayloadBuffer, size_t& bytesWritten) noexcept;
 
@@ -23,7 +31,9 @@ private:
     static constexpr std::string_view Hardware_Revision{ "2" };
 
     [[nodiscard]]
-    static DeviceInfo_DeviceInfo getDeviceInfo() noexcept;
+    static DeviceInfo getDeviceInfo() noexcept;
+
+    static std::expected<Frame, ProtocolErrors> handleRequest(const Frame& frame, std::span<uint8_t> framePayloadBuffer, size_t& bytesWritten) noexcept;
 };
 
 #endif // !GET_DEVICE_INFO_HANDLE_HEADER

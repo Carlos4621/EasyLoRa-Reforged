@@ -146,6 +146,18 @@ if (FIRMWARE_BUILD_TESTS)
     )
     FetchContent_MakeAvailable(googletest)
 
+    set(NANOPB_GEN_DIR "${CMAKE_CURRENT_LIST_DIR}/../protocol/generated/nanopb")
+    file(GLOB NANOPB_GEN_SOURCES CONFIGURE_DEPENDS "${NANOPB_GEN_DIR}/*.pb.c")
+
+    if (NOT TARGET protobuf-nanopb-static AND NOT TARGET protobuf-nanopb)
+        FetchContent_Declare(
+            nanopb
+            GIT_REPOSITORY https://github.com/nanopb/nanopb.git
+            GIT_TAG 0.4.8
+        )
+        FetchContent_MakeAvailable(nanopb)
+    endif()
+
     enable_testing()
 
     add_executable(framewaiter_tests
@@ -158,6 +170,24 @@ if (FIRMWARE_BUILD_TESTS)
     )
     target_link_libraries(framewaiter_tests PRIVATE GTest::gtest_main)
 
+    add_executable(getdeviceinfohandler_tests
+        tests/getdeviceinfohandler_tests.cpp
+        lib/GetDeviceInfoHandler/GetDeviceInfoHandler.cpp
+        ${NANOPB_GEN_SOURCES}
+    )
+    target_compile_features(getdeviceinfohandler_tests PRIVATE cxx_std_23)
+    target_include_directories(getdeviceinfohandler_tests PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}/lib/GetDeviceInfoHandler
+        ${CMAKE_CURRENT_LIST_DIR}/../protocol/include
+        ${NANOPB_GEN_DIR}
+    )
+    target_link_libraries(getdeviceinfohandler_tests PRIVATE GTest::gtest_main)
+    if (TARGET protobuf-nanopb-static)
+        target_link_libraries(getdeviceinfohandler_tests PRIVATE protobuf-nanopb-static)
+    elseif (TARGET protobuf-nanopb)
+        target_link_libraries(getdeviceinfohandler_tests PRIVATE protobuf-nanopb)
+    endif()
+
     if (FIRMWARE_TEST_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         target_compile_options(framewaiter_tests PRIVATE
             -fsanitize=${FIRMWARE_TEST_SANITIZERS}
@@ -165,8 +195,16 @@ if (FIRMWARE_BUILD_TESTS)
             -g
         )
         target_link_options(framewaiter_tests PRIVATE -fsanitize=${FIRMWARE_TEST_SANITIZERS})
+
+        target_compile_options(getdeviceinfohandler_tests PRIVATE
+            -fsanitize=${FIRMWARE_TEST_SANITIZERS}
+            -fno-omit-frame-pointer
+            -g
+        )
+        target_link_options(getdeviceinfohandler_tests PRIVATE -fsanitize=${FIRMWARE_TEST_SANITIZERS})
     endif()
 
     add_test(NAME framewaiter_tests COMMAND framewaiter_tests)
+    add_test(NAME getdeviceinfohandler_tests COMMAND getdeviceinfohandler_tests)
 endif()
 

@@ -6,7 +6,7 @@ std::expected<Frame, ProtocolErrors> FrameResponder::dispatch(const Frame &frame
     switch (frame.type) {
         using enum MessageType;
         case GetDeviceInfo:
-            
+            GetDeviceInfoHandle::handle(frame, framePayloadBuffer, bytesWritten);
             break;
         
         default:

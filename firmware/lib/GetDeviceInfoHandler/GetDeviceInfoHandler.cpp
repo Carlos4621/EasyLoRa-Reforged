@@ -1,34 +1,65 @@
 #include "GetDeviceInfoHandler.hpp"
 
-std::expected<Frame,ProtocolErrors> GetDeviceInfoHandle::handle(const Frame & frame, std::span<uint8_t> framePayloadBuffer, size_t & bytesWritten) noexcept {
+std::expected<Frame, ProtocolErrors> GetDeviceInfoHandle::handle(const Frame & frame, std::span<uint8_t> framePayloadBuffer, size_t & bytesWritten) noexcept {
+    if (frame.type != MessageType::GetDeviceInfo) {
+        return std::unexpected{ ProtocolErrors::HandlerWithIncorrectType };
+    }
+    
     switch (frame.kind) {
     using enum PackageKind;
     case Request:
-        
-        break;
+        return handleRequest(frame, framePayloadBuffer, bytesWritten);
     
     default:
-        std::unexpected{ ProtocolErrors::IncoherentFrame };
-        break;
+        return std::unexpected{ ProtocolErrors::IncoherentFrame };
     }
-    
 
-
-    return std::expected<Frame,ProtocolErrors>();
+    std::unreachable();
 }
 
-DeviceInfo_DeviceInfo GetDeviceInfoHandle::getDeviceInfo() noexcept {
-    DeviceInfo_DeviceInfo deviceInfo = DeviceInfo_DeviceInfo_init_zero;
+DeviceInfo GetDeviceInfoHandle::getDeviceInfo() noexcept {
+    static_assert(sizeof(DeviceInfo::device_name) >= Device_Name.size(), "Tamaño de Device_Name demasiado grande");
+    static_assert(sizeof(DeviceInfo::firmware_version) >= Firmware_Version.size(), "Tamaño de Firmware_Version demasiado grande");
+    static_assert(sizeof(DeviceInfo::hardware_revision) >= Hardware_Revision.size(), "Tamaño de Hardware_Revision demasiado grande");
 
-    deviceInfo.firmware_version.funcs.encode = &writeStringCallback;
-    deviceInfo.device_name.funcs.encode = &writeStringCallback;
-    deviceInfo.hardware_revision.funcs.encode = &writeStringCallback;
+    DeviceInfo deviceInfo = DeviceInfo_init_zero;
 
-    deviceInfo.firmware_version.arg = const_cast<void*>(static_cast<const void*>(Firmware_Version.data()));
-    deviceInfo.device_name.arg = const_cast<void*>(static_cast<const void*>(Device_Name.data()));
-    deviceInfo.hardware_revision.arg = const_cast<void*>(static_cast<const void*>(Hardware_Revision.data()));
+    std::memcpy(deviceInfo.device_name, Device_Name.data(), Device_Name.size());
+    std::memcpy(deviceInfo.firmware_version, Firmware_Version.data(), Firmware_Version.size());
+    std::memcpy(deviceInfo.hardware_revision, Hardware_Revision.data(), Hardware_Revision.size());
 
     deviceInfo.protocol_version = Protocol_Version;
 
     return deviceInfo;
+}
+
+std::expected<Frame, ProtocolErrors> GetDeviceInfoHandle::handleRequest(const Frame &frame, std::span<uint8_t> framePayloadBuffer, size_t &bytesWritten) noexcept {
+    if (framePayloadBuffer.size() < DeviceInfo_size) {
+        return std::unexpected{ ProtocolErrors::BufferTooSmall };
+    }
+
+    Frame response{
+        .version = Frame::Actual_Frame_Version,
+        .kind = PackageKind::Response,
+        .flags = 0,
+        .reserved = 0,
+        .seq = frame.seq,
+        .type = MessageType::GetDeviceInfo
+    };
+
+    pb_ostream_t stream = pb_ostream_from_buffer(&framePayloadBuffer[0], framePayloadBuffer.size());
+    
+    const auto info{ getDeviceInfo() };
+
+    if (!pb_encode(&stream, &DeviceInfo_msg, &info)) {
+        return std::unexpected{ ProtocolErrors::CodificationError };
+    }
+
+    // TODO: Añadir log de error mostrando stream.errmsg
+
+    bytesWritten = stream.bytes_written;
+
+    response.payload = framePayloadBuffer.first(bytesWritten);
+
+    return response;
 }

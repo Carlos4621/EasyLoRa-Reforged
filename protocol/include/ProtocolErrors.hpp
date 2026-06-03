@@ -15,6 +15,7 @@ enum class ProtocolErrors : uint8_t {
     EmptyInputBuffer,
     IncoherentFrame,
     CodificationError,
+    HandlerWithIncorrectType,
 };
 
 #endif // !PROTOCOL_ERRORS_HEADER
