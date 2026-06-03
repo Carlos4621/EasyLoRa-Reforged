@@ -1,7 +1,5 @@
 syntax = "proto3";
 
-package DeviceInfo;
-
 message DeviceInfo {
     string firmware_version = 1;
     uint32 protocol_version = 2;

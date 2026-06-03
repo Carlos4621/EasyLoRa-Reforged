@@ -14,6 +14,7 @@ enum class ProtocolErrors : uint8_t {
     SameBufferError,
     EmptyInputBuffer,
     IncoherentFrame,
+    CodificationError,
 };
 
 #endif // !PROTOCOL_ERRORS_HEADER

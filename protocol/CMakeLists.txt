@@ -127,6 +127,11 @@ if(EASYLORA_ENABLE_NANOPB)
 
 	foreach(PROTO_FILE IN LISTS PROTO_FILES)
 		get_filename_component(PROTO_NAME "${PROTO_FILE}" NAME_WE)
+		set(PROTO_OPTIONS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/proto/${PROTO_NAME}.options")
+		set(NANOPB_DEPENDS "${PROTO_FILE}")
+		if(EXISTS "${PROTO_OPTIONS_FILE}")
+			list(APPEND NANOPB_DEPENDS "${PROTO_OPTIONS_FILE}")
+		endif()
 		list(APPEND NANOPB_OUTPUTS
 			"${NANOPB_GEN_DIR}/${PROTO_NAME}.pb.c"
 			"${NANOPB_GEN_DIR}/${PROTO_NAME}.pb.h"
@@ -138,9 +143,10 @@ if(EASYLORA_ENABLE_NANOPB)
 			COMMAND "${Protobuf_PROTOC_EXECUTABLE}"
 				--proto_path=${CMAKE_CURRENT_SOURCE_DIR}/proto
 				--plugin=protoc-gen-nanopb=${NANOPB_PLUGIN}
+				--nanopb_opt=-I${CMAKE_CURRENT_SOURCE_DIR}/proto
 				--nanopb_out=${NANOPB_GEN_DIR}
 				${PROTO_FILE}
-			DEPENDS "${PROTO_FILE}"
+			DEPENDS ${NANOPB_DEPENDS}
 			COMMENT "Generating nanopb for ${PROTO_NAME}"
 			VERBATIM
 		)
