@@ -8,6 +8,7 @@
 #include <cassert>
 #include <utility>
 #include <cstring>
+#include <span>
 
 enum class ReadFrameStatus : uint8_t {
     OK = 0,
@@ -32,6 +33,11 @@ public:
     /// @param byte Byte a agregar
     /// @warning Solo debe usarse por parte del productor
     void feed(uint8_t byte) noexcept;
+
+    /// @brief Añade un rango de bytes al buffer y lo analiza para indicar su hubo un frame completo llegado u overflow
+    /// @param range Rango de bytes a insertar
+    /// @warning Solo debe usarse por parte del productor
+    void feed(std::span<uint8_t> range) noexcept;
 
     /// @brief Intenta leer un frame del ring buffer
     /// @param outputBuffer Puntero al buffer donde se colocarán los datos
@@ -86,6 +92,13 @@ inline void FrameWaiter<BufferSize>::feed(uint8_t byte) noexcept {
         if (callback_m != nullptr) {
             callback_m();
         }
+    }
+}
+
+template <size_t BufferSize>
+inline void FrameWaiter<BufferSize>::feed(std::span<uint8_t> range) noexcept {
+    for (const auto& i : range) {
+        feed(i);
     }
 }
 
