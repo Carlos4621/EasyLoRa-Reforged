@@ -48,6 +48,9 @@ public:
     [[nodiscard]]
     ReadFrameStatus tryReadFrame(uint8_t* outputBuffer, size_t bufferCapacity, size_t& bytesWritten) noexcept;
 
+    /// @brief Función de conveniencia para la inserción del delimitador de paquete
+    void insertDelimiter() noexcept;
+
 private:
     static constexpr uint8_t Packet_Delimiter{ 0x00 };
 
@@ -142,6 +145,11 @@ inline ReadFrameStatus FrameWaiter<BufferSize>::tryReadFrame(uint8_t *outputBuff
     }
 
     return ReadFrameStatus::IncompleteFrame;
+}
+
+template <size_t BufferSize>
+inline void FrameWaiter<BufferSize>::insertDelimiter() noexcept {
+    feed(Packet_Delimiter);
 }
 
 template <size_t BufferSize>

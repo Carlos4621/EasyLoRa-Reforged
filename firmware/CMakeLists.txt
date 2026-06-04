@@ -89,7 +89,6 @@ if (NOT FIRMWARE_BUILD_TESTS)
         lib/Core_1/Core_1.cpp
         lib/Core_0/Core_0.hpp
         lib/Core_0/Core_0.cpp
-        include/TxFrame.hpp
         lib/FrameResponder/FrameResponder.cpp
         lib/GetDeviceInfoHandler/GetDeviceInfoHandler.cpp
     )
@@ -125,6 +124,7 @@ if (NOT FIRMWARE_BUILD_TESTS)
         ${CMAKE_CURRENT_LIST_DIR}/lib/Core_0
         ${CMAKE_CURRENT_LIST_DIR}/include
         ${CMAKE_CURRENT_LIST_DIR}/lib/GetDeviceInfoHandler
+        ${CMAKE_CURRENT_LIST_DIR}/lib/FrameResponder
         ${NANOPB_GEN_DIR}
     )
 

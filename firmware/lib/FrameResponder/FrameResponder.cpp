@@ -12,6 +12,5 @@ std::expected<Frame, ProtocolErrors> FrameResponder::dispatch(const Frame &frame
             return std::unexpected{ ProtocolErrors::InvalidMessageType };
     }
     
-    
     std::unreachable();
 }
