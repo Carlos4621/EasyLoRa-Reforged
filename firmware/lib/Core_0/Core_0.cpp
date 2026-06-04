@@ -1,8 +1,8 @@
 #include "Core_0.hpp"
 
 void Core_0::init(uint UART_0_RxPin, uint UART_0_TxPin, uint UART_1_TxPin, uint UART_1_RxPin) noexcept {
-    UART_0_Wrapper.init(PICO_DEFAULT_UART_BAUD_RATE, UART_0_RxPin, UART_0_TxPin);
-    UART_1_Wrapper.init(PICO_DEFAULT_UART_BAUD_RATE, UART_1_RxPin, UART_1_TxPin);
+    assert(UART_0_Wrapper.init(PICO_DEFAULT_UART_BAUD_RATE, UART_0_RxPin, UART_0_TxPin) && "Error while UART 0 initialization");
+    assert(UART_1_Wrapper.init(PICO_DEFAULT_UART_BAUD_RATE, UART_1_RxPin, UART_1_TxPin) && "Error while UART 1 initialization");
 
     initialize_UART_0_IRQ();
 }
@@ -24,6 +24,6 @@ void Core_0::initialize_UART_0_IRQ() {
 
 inline void Core_0::UART_0_IRQ_Handler() {
     while (UART_0_Wrapper.isReadable()) {
-        UART_0_FrameWaiter.feed(UART_0_Wrapper.read());
+        UART_0_Rx_FrameWaiter.feed(UART_0_Wrapper.read());
     }
 }
