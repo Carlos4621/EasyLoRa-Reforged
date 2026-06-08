@@ -13,11 +13,12 @@
 class FrameCodec {
 public:
 
-    /// @brief Convierte a bytes un Frame y coloca su correspondiente CRC 
+    /// @brief Convierte a bytes un Frame y coloca su correspondiente CRC.
     /// @param frame Frame a codificar
     /// @param outputBuffer Buffer en el que se escribirá el contenido codificado y CRC
     /// @return std::expected con std::span el buffer que contiene los datos escritos, en caso de error devuelve un ProtocolError
-    /// @warning Esta función no coloca el 0x00 delimitador, eso debe hacerse por parte del usuario
+    /// @warning Esta función no coloca el 0x00 delimitador, eso debe hacerse por parte del usuario.
+    /// @warning El buffer del payload del frame no puede ser usado como buffer de salida
     [[nodiscard]]
     static std::expected<std::span<uint8_t>, ProtocolErrors> encode(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept;
 

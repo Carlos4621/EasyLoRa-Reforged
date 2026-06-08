@@ -11,7 +11,7 @@
 class CobsrDecoder {
 public:
 
-    /// @brief Decodifica un buffer codificado con COBS/R y coloca el resultado en otro buffer
+    /// @brief Decodifica un buffer codificado con COBS/R y coloca el resultado en otro buffer. Decodificación in-place posible solo sin offset.
     /// @param inputBuffer Buffer codificado en COBS/R
     /// @param outputBuffer Buffer en el que se colocará el inputBuffer descodificado
     /// @return std::expected con std::span que apunta al buffer con el resultado, en caso de error un ProtocolErrors

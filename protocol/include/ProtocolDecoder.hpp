@@ -13,6 +13,7 @@ public:
     /// @param frameBytes Buffer intermedio donde se guardará el frame después de decodificar COBS/R
     /// @param payloadInFrame Buffer donde se guarda el payload del frame
     /// @return std::expected con Frame en caso de éxito, en caso de error un ProtocolErrors
+    /// @warning frameBytes y payloadInFrame DEBEN ser de distintos buffers
     [[nodiscard]]
     static std::expected<Frame, ProtocolErrors> decode(std::span<const uint8_t> inputBuffer, std::span<uint8_t> frameBytes, 
         std::span<uint8_t> payloadInFrame) noexcept;

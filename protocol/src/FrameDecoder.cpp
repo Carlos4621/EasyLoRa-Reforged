@@ -4,6 +4,10 @@ std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_
     if (inputRawBuffer.size() < Minimum_Raw_Buffer_Size) {
         return std::unexpected(ProtocolErrors::BufferTooSmall);
     }
+
+    if (spansOverlap(inputRawBuffer, outputPayloadInFrame)) {
+        return std::unexpected(ProtocolErrors::SameBufferError);
+    }
     
     const auto bufferWithoutCRC{ inputRawBuffer.first(inputRawBuffer.size() - Frame::CRC_Size) };
 

@@ -10,7 +10,7 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrDecoder::decode(std::span
         return std::unexpected(ProtocolErrors::BufferTooSmall);
     }
 
-    if (spansOverlap(inputBuffer, outputBuffer) && (inputBuffer.data() != outputBuffer.data())) {
+    if ((inputBuffer.data() != outputBuffer.data()) && spansOverlap(inputBuffer, outputBuffer)) {
         return std::unexpected(ProtocolErrors::SameBufferError);
     }
    

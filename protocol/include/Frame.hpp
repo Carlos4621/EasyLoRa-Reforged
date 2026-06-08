@@ -10,8 +10,8 @@
 struct Frame {
     uint8_t version;
     PackageKind kind;
-    uint8_t flags;
-    uint8_t reserved;
+    uint8_t flags; // Placeholder
+    uint8_t reserved; // Placeholder
     uint16_t seq;
     MessageType type;
     std::span<const uint8_t> payload;
