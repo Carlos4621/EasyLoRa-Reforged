@@ -17,7 +17,7 @@ enum class MessageType : uint8_t {
 /// @param value Valor a validar
 /// @return Si el valor corresponde a un miembro de MessageType
 [[nodiscard]]
-static constexpr bool isValidMessageType(uint8_t value) noexcept {
+inline constexpr bool isValidMessageType(uint8_t value) noexcept {
     const auto castedValue{ static_cast<MessageType>(value) };
 
     switch (castedValue) {
