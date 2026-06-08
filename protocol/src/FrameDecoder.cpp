@@ -17,6 +17,10 @@ std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_
     Frame outputFrame;
 
     outputFrame.version = bufferWithoutCRC[currentByte++];
+
+    if (outputFrame.version != Frame::Actual_Frame_Version) {
+        return std::unexpected(ProtocolErrors::FrameVersionMissmatch);
+    }
     
     if (!putPackageKind(bufferWithoutCRC, outputFrame.kind, currentByte)) {
         return std::unexpected(ProtocolErrors::InvalidPackageKind);

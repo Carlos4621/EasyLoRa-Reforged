@@ -16,6 +16,7 @@ enum class ProtocolErrors : uint8_t {
     IncoherentFrame,
     CodificationError,
     HandlerWithIncorrectType,
+    FrameVersionMissmatch,
 };
 
 #endif // !PROTOCOL_ERRORS_HEADER
