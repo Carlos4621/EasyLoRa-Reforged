@@ -3,12 +3,12 @@
 #include <cstring>
 #include "BitsUtilities.hpp"
 
-std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> outputPayloadInFrame) noexcept {
+std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> payloadInFrame) noexcept {
     if (inputRawBuffer.size() < Minimum_Raw_Buffer_Size) {
         return std::unexpected(ProtocolErrors::BufferTooSmall);
     }
 
-    if (spansOverlap(inputRawBuffer, outputPayloadInFrame)) {
+    if (spansOverlap(inputRawBuffer, payloadInFrame)) {
         return std::unexpected(ProtocolErrors::SameBufferError);
     }
     
@@ -16,7 +16,7 @@ std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_
 
     if (!isCRCValid(inputRawBuffer, bufferWithoutCRC)) {
         return std::unexpected(ProtocolErrors::CRCMissMatch);
-    } else if (!isEnoughPayloadSize(inputRawBuffer.size(), outputPayloadInFrame.size())) {
+    } else if (!isEnoughPayloadSize(inputRawBuffer.size(), payloadInFrame.size())) {
         return std::unexpected(ProtocolErrors::FramePayloadTooSmall);
     }
 
@@ -43,7 +43,7 @@ std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_
     }
 
     const size_t payloadSize{ bufferWithoutCRC.size() - currentByte };
-    auto outputPayload{ outputPayloadInFrame.first(payloadSize) };
+    auto outputPayload{ payloadInFrame.first(payloadSize) };
 
     if (payloadSize > 0) {
         std::memmove(outputPayload.data(), bufferWithoutCRC.data() + currentByte, payloadSize);
@@ -65,10 +65,6 @@ bool FrameDecoder::isCRCValid(std::span<const uint8_t> buffer, std::span<const u
 
 bool FrameDecoder::isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize) noexcept {
     return framePayloadSize >= (inputBufferSize - Frame::Header_Size - Frame::CRC_Size);
-}
-
-bool FrameDecoder::inputBufferHaveEnoughSize(size_t inputBufferSize) noexcept {
-    return inputBufferSize >= (Frame::Header_Size + Frame::CRC_Size);
 }
 
 bool FrameDecoder::putPackageKind(std::span<const uint8_t> buffer, PackageKind& kind, size_t &currentByte) noexcept {

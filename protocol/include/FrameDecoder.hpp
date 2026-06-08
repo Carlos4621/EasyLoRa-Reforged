@@ -35,9 +35,6 @@ private:
     static bool isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize) noexcept;
 
     [[nodiscard]]
-    static bool inputBufferHaveEnoughSize(size_t inputBufferSize) noexcept;
-
-    [[nodiscard]]
     static bool putPackageKind(std::span<const uint8_t> buffer, PackageKind& kind, size_t& currentByte) noexcept;
 
     [[nodiscard]]
