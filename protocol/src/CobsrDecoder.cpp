@@ -18,7 +18,7 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrDecoder::decode(std::span
     const auto cobsrStatus{ cobsr_decode(outputBuffer.data(), outputBuffer.size(), encodedPtr, inputBuffer.size()) };
 
     if (cobsrStatus.status != COBSR_DECODE_OK) {
-        return std::unexpected(ProtocolErrors::COBSRError);
+        return std::unexpected(ProtocolErrors::COBSRDecodeError);
     }
 
     return outputBuffer.first(cobsrStatus.out_len);

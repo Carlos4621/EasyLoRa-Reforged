@@ -23,7 +23,7 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrCodec::addCOBSR(std::span
     const auto cobsrStatus{ cobsr_encode(outputBuffer.data(), outputBuffer.size(), rawPtr, inputBuffer.size()) };
 
     if (cobsrStatus.status != COBSR_ENCODE_OK) {
-        return std::unexpected(ProtocolErrors::COBSRError);
+        return std::unexpected(ProtocolErrors::COBSREncodeError);
     }
     
     return outputBuffer.first(cobsrStatus.out_len);
