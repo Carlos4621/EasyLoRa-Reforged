@@ -21,9 +21,9 @@ public:
     /// @param payloadInFrame Buffer donde se localizará el payload del frame
     /// @param frame Frame en el que se colocará la data decodificada
     /// @return std::expected con el frame en caso de éxito, ProtocolErrors en caso de error
+    /// @warning Se debe entregar el buffer SIN el 0x00
     [[nodiscard]]
-    static std::expected<Frame, ProtocolErrors> decode(std::span<const uint8_t> inputRawBuffer, 
-        std::span<uint8_t> payloadInFrame) noexcept;
+    static std::expected<Frame, ProtocolErrors> decode(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> payloadInFrame) noexcept;
 
 private:
 
