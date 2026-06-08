@@ -1,6 +1,10 @@
 #include "CobsrCodec.hpp"
 
 std::expected<std::span<uint8_t>, ProtocolErrors> CobsrCodec::addCOBSR(std::span<const uint8_t> inputBuffer, std::span<uint8_t> outputBuffer) noexcept {
+    if (inputBuffer.empty()) {
+        return outputBuffer.first(0);
+    }
+    
     if (outputBuffer.size() < minumunOutputBufferSize(inputBuffer.size())) {
         return std::unexpected(ProtocolErrors::BufferTooSmall);
     }
