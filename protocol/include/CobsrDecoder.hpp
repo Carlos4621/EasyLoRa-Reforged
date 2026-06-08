@@ -1,11 +1,13 @@
 #ifndef COBSR_DECODER_HEADER
 #define COBSR_DECODER_HEADER
 
-#include <span>
+#include <cstddef>
+#include <cstdint>
 #include <expected>
+#include <span>
 #include "ProtocolErrors.hpp"
-#include "cobs/cobsr.h"
 #include "SpanUtilities.hpp"
+#include "cobs/cobsr.h"
 
 /// @brief Clase que decodifica un buffer codificado con COBS/R y coloca el resultado en otro buffer
 class CobsrDecoder {

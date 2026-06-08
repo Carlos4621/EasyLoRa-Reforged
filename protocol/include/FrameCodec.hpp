@@ -1,12 +1,13 @@
 #ifndef FRAME_CODEC_HEADER
 #define FRAME_CODEC_HEADER
 
+#include <cstddef>
+#include <cstdint>
 #include <expected>
-#include "Frame.hpp"
-#include "BitsUtilities.hpp"
+#include <span>
 #include "CRC.h"
+#include "Frame.hpp"
 #include "ProtocolErrors.hpp"
-#include <cstring>
 #include "SpanUtilities.hpp"
 
 /// @brief Clase encargada de codificar un Frame a bytes y agregar CRC.

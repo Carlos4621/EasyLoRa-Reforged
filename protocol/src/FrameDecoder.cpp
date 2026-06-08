@@ -1,5 +1,8 @@
 #include "FrameDecoder.hpp"
 
+#include <cstring>
+#include "BitsUtilities.hpp"
+
 std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> outputPayloadInFrame) noexcept {
     if (inputRawBuffer.size() < Minimum_Raw_Buffer_Size) {
         return std::unexpected(ProtocolErrors::BufferTooSmall);

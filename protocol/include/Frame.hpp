@@ -1,6 +1,7 @@
 #ifndef FRAME_HEADER
 #define FRAME_HEADER
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include "PackageKind.hpp"

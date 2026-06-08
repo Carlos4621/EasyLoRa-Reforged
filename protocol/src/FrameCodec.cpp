@@ -1,5 +1,8 @@
 #include "FrameCodec.hpp"
 
+#include <cstring>
+#include "BitsUtilities.hpp"
+
 std::expected<std::span<uint8_t>, ProtocolErrors> FrameCodec::encode(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept {
     if (!isEnoughBufferSize(outputBuffer.size(), frame.payload.size())) {
         return std::unexpected(ProtocolErrors::BufferTooSmall);

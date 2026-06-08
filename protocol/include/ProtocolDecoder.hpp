@@ -1,8 +1,11 @@
 #ifndef PROTOCOL_DECODER_HEADER
 #define PROTOCOL_DECODER_HEADER
 
-#include "FrameDecoder.hpp"
+#include <cstdint>
+#include <expected>
+#include <span>
 #include "CobsrDecoder.hpp"
+#include "FrameDecoder.hpp"
 
 /// @brief Clase que decodifica un frame recibido y previamente codificado con ProtocolCodec
 class ProtocolDecoder {

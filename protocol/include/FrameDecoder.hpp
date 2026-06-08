@@ -1,11 +1,11 @@
 #ifndef FRAME_DECODER_HEADER
 #define FRAME_DECODER_HEADER
 
+#include <cstddef>
+#include <cstdint>
 #include <expected>
-#include <cstring>
 #include "CRC.h"
 #include "Frame.hpp"
-#include "BitsUtilities.hpp"
 #include "ProtocolErrors.hpp"
 #include "SpanUtilities.hpp"
 

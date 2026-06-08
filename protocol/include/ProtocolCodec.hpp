@@ -1,6 +1,9 @@
 #ifndef PROTOCOL_CODEC_HEADER
 #define PROTOCOL_CODEC_HEADER
 
+#include <cstdint>
+#include <expected>
+#include <span>
 #include "CobsrCodec.hpp"
 #include "FrameCodec.hpp"
 
