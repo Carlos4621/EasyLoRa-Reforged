@@ -18,12 +18,12 @@ public:
     /// @param outputBuffer Buffer en el que se colocará el inputBuffer con COBS/R aplicado
     /// @return std::expected con std::span apuntando al buffer que contiene el resultado, en caso de error devuelve un ProtocolErrors
     [[nodiscard]]
-    static std::expected<std::span<uint8_t>, ProtocolErrors> addCOBSR(std::span<const uint8_t> inputBuffer, std::span<uint8_t> outputBuffer);
+    static std::expected<std::span<uint8_t>, ProtocolErrors> addCOBSR(std::span<const uint8_t> inputBuffer, std::span<uint8_t> outputBuffer) noexcept;
 
-private:
-
-    [[nodiscard]]
-    static bool outputBufferHaveEnoughSize(size_t outputBufferSize, size_t rawFrameSize);
+    /// @brief Retorna el tamaño mínimo que debe tener el buffer de salida
+    /// @param bufferToEncodeSize Tamaño del buffer a codificar
+    /// @return Tamaño mínimo del buffer de salida
+    static size_t minumunOutputBufferSize(size_t bufferToEncodeSize) noexcept;
 };
 
 #endif // !COBSR_CODEC_HEADER

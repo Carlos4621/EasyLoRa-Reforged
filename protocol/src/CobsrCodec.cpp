@@ -1,7 +1,7 @@
 #include "CobsrCodec.hpp"
 
-std::expected<std::span<uint8_t>, ProtocolErrors> CobsrCodec::addCOBSR(std::span<const uint8_t> inputBuffer, std::span<uint8_t> outputBuffer) {
-    if (!outputBufferHaveEnoughSize(outputBuffer.size(), inputBuffer.size())) {
+std::expected<std::span<uint8_t>, ProtocolErrors> CobsrCodec::addCOBSR(std::span<const uint8_t> inputBuffer, std::span<uint8_t> outputBuffer) noexcept {
+    if (outputBuffer.size() < minumunOutputBufferSize(inputBuffer.size())) {
         return std::unexpected(ProtocolErrors::BufferTooSmall);
     }
 
@@ -25,6 +25,6 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrCodec::addCOBSR(std::span
     return outputBuffer.first(cobsrStatus.out_len);
 }
 
-bool CobsrCodec::outputBufferHaveEnoughSize(size_t outputBufferSize, size_t inputBufferSize) {
-    return outputBufferSize >= COBSR_ENCODE_DST_BUF_LEN_MAX(inputBufferSize);
+size_t CobsrCodec::minumunOutputBufferSize(size_t bufferToEncodeSize) noexcept {
+    return COBSR_ENCODE_DST_BUF_LEN_MAX(bufferToEncodeSize);
 }
