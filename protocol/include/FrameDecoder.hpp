@@ -28,22 +28,22 @@ public:
 private:
 
     [[nodiscard]]
-    static bool isCRCValid(std::span<const uint8_t> buffer, std::span<const uint8_t> bufferWithoutCRC);
+    static bool isCRCValid(std::span<const uint8_t> buffer, std::span<const uint8_t> bufferWithoutCRC) noexcept;
 
     [[nodiscard]]
-    static bool isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize);
+    static bool isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize) noexcept;
 
     [[nodiscard]]
-    static bool inputBufferHaveEnoughSize(size_t inputBufferSize);
+    static bool inputBufferHaveEnoughSize(size_t inputBufferSize) noexcept;
 
     [[nodiscard]]
-    static bool putPackageKind(std::span<const uint8_t> buffer, PackageKind& kind, size_t& currentByte);
+    static bool putPackageKind(std::span<const uint8_t> buffer, PackageKind& kind, size_t& currentByte) noexcept;
 
     [[nodiscard]]
-    static bool putMessageType(std::span<const uint8_t> buffer, MessageType& type, size_t& currentByte);
+    static bool putMessageType(std::span<const uint8_t> buffer, MessageType& type, size_t& currentByte) noexcept;
 
     /// @brief Transfiere dos bytes a un uint16_t en formato Big Endian
-    static void putTwoBytes(std::span<const uint8_t> buffer, uint16_t& value, size_t& currentByte);
+    static void putTwoBytes(std::span<const uint8_t> buffer, uint16_t& value, size_t& currentByte) noexcept;
 };
 
 #endif // !FRAME_DECODER_HEADER

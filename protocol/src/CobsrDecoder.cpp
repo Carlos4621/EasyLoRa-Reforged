@@ -1,6 +1,7 @@
 #include "CobsrDecoder.hpp"
 
-std::expected<std::span<uint8_t>, ProtocolErrors> CobsrDecoder::decode(std::span<const uint8_t> inputBuffer, std::span<uint8_t> outputBuffer) {
+std::expected<std::span<uint8_t>, ProtocolErrors> CobsrDecoder::decode(std::span<const uint8_t> inputBuffer,
+ std::span<uint8_t> outputBuffer) noexcept {
     if (inputBuffer.empty()) {
         return std::unexpected(ProtocolErrors::EmptyInputBuffer);
     }

@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.20)
 
 project(EasyLoRaProtocol LANGUAGES C CXX)
 
+if(POLICY CMP0135)
+	cmake_policy(SET CMP0135 NEW)
+endif()
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -159,21 +163,31 @@ if(GENERATED_OUTPUTS)
 	add_custom_target(generate_protocol_code ALL DEPENDS ${GENERATED_OUTPUTS})
 endif()
 
-# Header-only base target until sources are added.
-add_library(easylora_protocol INTERFACE)
+add_library(easylora_protocol
+	src/CobsrCodec.cpp
+	src/CobsrDecoder.cpp
+	src/FrameCodec.cpp
+	src/FrameDecoder.cpp
+	src/ProtocolCodec.cpp
+	src/ProtocolDecoder.cpp
+)
 add_library(EasyLoRa::protocol ALIAS easylora_protocol)
 
-target_include_directories(easylora_protocol INTERFACE
+if(TARGET generate_protocol_code)
+	add_dependencies(easylora_protocol generate_protocol_code)
+endif()
+
+target_include_directories(easylora_protocol PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 	$<BUILD_INTERFACE:${PROTOBUF_GEN_DIR}>
 	$<BUILD_INTERFACE:${NANOPB_GEN_DIR}>
 	$<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(easylora_protocol INTERFACE cobs::cobs)
-target_link_libraries(easylora_protocol INTERFACE crcpp::crcpp)
+target_link_libraries(easylora_protocol PUBLIC cobs::cobs)
+target_link_libraries(easylora_protocol PUBLIC crcpp::crcpp)
 if(TARGET nanopb)
-	target_link_libraries(easylora_protocol INTERFACE nanopb)
+	target_link_libraries(easylora_protocol PUBLIC nanopb)
 endif()
 
 if(EASYLORA_BUILD_EXAMPLES)

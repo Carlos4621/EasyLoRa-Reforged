@@ -15,7 +15,7 @@ enum class PackageKind : uint8_t {
 /// @param value Valor a evaluar
 /// @return True en caso de ser un miembro de PackageKind
 [[nodiscard]]
-static constexpr bool isValidPackageKind(uint8_t value) {
+static constexpr bool isValidPackageKind(uint8_t value) noexcept {
     const auto castedValue{ static_cast<PackageKind>(value) };
 
     switch (castedValue) {

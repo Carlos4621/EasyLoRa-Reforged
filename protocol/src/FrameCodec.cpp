@@ -48,7 +48,7 @@ void FrameCodec::insertPayload(std::span<uint8_t> buffer, const Frame& frame, si
     bytesWritten += frame.payload.size();
 }
 
-bool FrameCodec::insertMessageType(std::span<uint8_t> buffer, uint8_t value, size_t& bytesWritten) {
+bool FrameCodec::insertMessageType(std::span<uint8_t> buffer, uint8_t value, size_t& bytesWritten) noexcept {
     if (!isValidMessageType(value)) {
         return false;
     }
@@ -57,7 +57,7 @@ bool FrameCodec::insertMessageType(std::span<uint8_t> buffer, uint8_t value, siz
     return true;
 }
 
-bool FrameCodec::insertPackageKind(std::span<uint8_t> buffer, uint8_t value, size_t& bytesWritten) {
+bool FrameCodec::insertPackageKind(std::span<uint8_t> buffer, uint8_t value, size_t& bytesWritten) noexcept {
     if (!isValidPackageKind(value)) {
         return false;
     }
@@ -66,7 +66,7 @@ bool FrameCodec::insertPackageKind(std::span<uint8_t> buffer, uint8_t value, siz
     return true;
 }
 
-void FrameCodec::insertTwoBytes(std::span<uint8_t> buffer, uint16_t value, size_t &bytesWritten) {
+void FrameCodec::insertTwoBytes(std::span<uint8_t> buffer, uint16_t value, size_t &bytesWritten) noexcept {
     buffer[bytesWritten++] = getHighByte(value);
     buffer[bytesWritten++] = getLowByte(value);
 }

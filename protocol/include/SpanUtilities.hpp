@@ -5,7 +5,7 @@
 #include <span>
 
 [[nodiscard]]
-static inline bool spansOverlap(std::span<const uint8_t> left, std::span<const uint8_t> right) {
+static inline bool spansOverlap(std::span<const uint8_t> left, std::span<const uint8_t> right) noexcept {
     if (left.empty() || right.empty()) {
         return false;
     }

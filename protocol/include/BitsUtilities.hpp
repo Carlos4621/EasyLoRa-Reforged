@@ -9,7 +9,7 @@ static constexpr uint8_t Byte_Shift{ 8 };
 /// @param twoBytes Dos bytes a separar
 /// @return El byte más significativo
 [[nodiscard]]
-static constexpr uint8_t getHighByte(uint16_t twoBytes) {
+static constexpr uint8_t getHighByte(uint16_t twoBytes) noexcept {
     return twoBytes >> Byte_Shift;
 }
 
@@ -17,7 +17,7 @@ static constexpr uint8_t getHighByte(uint16_t twoBytes) {
 /// @param twoBytes Dos bytes a separar
 /// @return El byte menos significativo
 [[nodiscard]]
-static constexpr uint8_t getLowByte(uint16_t twoBytes) {
+static constexpr uint8_t getLowByte(uint16_t twoBytes) noexcept {
     return static_cast<uint8_t>(twoBytes); // Truncar el primer byte
 }
 
@@ -26,7 +26,7 @@ static constexpr uint8_t getLowByte(uint16_t twoBytes) {
 /// @param lowByte Byte menos significativo
 /// @return Dos bytes unidos
 [[nodiscard]]
-static constexpr uint16_t bindTwoBytes(uint8_t highByte, uint8_t lowByte) {
+static constexpr uint16_t bindTwoBytes(uint8_t highByte, uint8_t lowByte) noexcept {
     return (highByte << Byte_Shift) | lowByte;
 }
 

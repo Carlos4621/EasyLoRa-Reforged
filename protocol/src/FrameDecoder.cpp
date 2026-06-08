@@ -47,7 +47,7 @@ std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_
     return outputFrame;
 }
 
-bool FrameDecoder::isCRCValid(std::span<const uint8_t> buffer, std::span<const uint8_t> bufferWithoutCRC) {
+bool FrameDecoder::isCRCValid(std::span<const uint8_t> buffer, std::span<const uint8_t> bufferWithoutCRC) noexcept {
     const auto expectedCRC{ CRC::Calculate(&bufferWithoutCRC[0], bufferWithoutCRC.size(), CRC::CRC_16_CCITTFALSE()) };
 
     const auto receivedCRCSpan{ buffer.last(Frame::CRC_Size) };
@@ -56,15 +56,15 @@ bool FrameDecoder::isCRCValid(std::span<const uint8_t> buffer, std::span<const u
     return (expectedCRC == receivedCRC);
 }
 
-bool FrameDecoder::isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize) {
+bool FrameDecoder::isEnoughPayloadSize(size_t inputBufferSize, size_t framePayloadSize) noexcept {
     return framePayloadSize >= (inputBufferSize - Frame::Header_Size - Frame::CRC_Size);
 }
 
-bool FrameDecoder::inputBufferHaveEnoughSize(size_t inputBufferSize) {
+bool FrameDecoder::inputBufferHaveEnoughSize(size_t inputBufferSize) noexcept {
     return inputBufferSize >= (Frame::Header_Size + Frame::CRC_Size);
 }
 
-bool FrameDecoder::putPackageKind(std::span<const uint8_t> buffer, PackageKind& kind, size_t &currentByte) {
+bool FrameDecoder::putPackageKind(std::span<const uint8_t> buffer, PackageKind& kind, size_t &currentByte) noexcept {
     if (!isValidPackageKind(buffer[currentByte])) {
         return false;
     }
@@ -73,7 +73,7 @@ bool FrameDecoder::putPackageKind(std::span<const uint8_t> buffer, PackageKind& 
     return true;
 }
 
-bool FrameDecoder::putMessageType(std::span<const uint8_t> buffer, MessageType &type, size_t &currentByte) {
+bool FrameDecoder::putMessageType(std::span<const uint8_t> buffer, MessageType &type, size_t &currentByte) noexcept {
     if (!isValidMessageType(buffer[currentByte])) {
         return false;
     }
@@ -82,7 +82,7 @@ bool FrameDecoder::putMessageType(std::span<const uint8_t> buffer, MessageType &
     return true;
 }
 
-void FrameDecoder::putTwoBytes(std::span<const uint8_t> buffer, uint16_t& value, size_t &currentByte) {
+void FrameDecoder::putTwoBytes(std::span<const uint8_t> buffer, uint16_t& value, size_t &currentByte) noexcept {
     const auto highByte{ buffer[currentByte++] };
     const auto lowByte{ buffer[currentByte++] };
 

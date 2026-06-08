@@ -31,13 +31,13 @@ private:
     static void insertPayload(std::span<uint8_t> buffer, const Frame& frame, size_t& bytesWritten) noexcept;
 
     [[nodiscard]]
-    static bool insertMessageType(std::span<uint8_t> buffer, uint8_t value, size_t& bytesWritten);
+    static bool insertMessageType(std::span<uint8_t> buffer, uint8_t value, size_t& bytesWritten) noexcept;
 
     [[nodiscard]]
-    static bool insertPackageKind(std::span<uint8_t> buffer, uint8_t value, size_t& bytesWritten);
+    static bool insertPackageKind(std::span<uint8_t> buffer, uint8_t value, size_t& bytesWritten) noexcept;
 
     /// @brief Inserta dos bytes en Big Endian
-    static void insertTwoBytes(std::span<uint8_t> buffer, uint16_t value, size_t& bytesWritten);
+    static void insertTwoBytes(std::span<uint8_t> buffer, uint16_t value, size_t& bytesWritten) noexcept;
 };
 
 #endif // !FRAME_CODEC_HEADER

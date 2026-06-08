@@ -14,7 +14,8 @@ public:
     /// @param payloadInFrame Buffer donde se guarda el payload del frame
     /// @return std::expected con Frame en caso de éxito, en caso de error un ProtocolErrors
     [[nodiscard]]
-    static std::expected<Frame, ProtocolErrors> decode(std::span<const uint8_t> inputBuffer, std::span<uint8_t> frameBytes, std::span<uint8_t> payloadInFrame) noexcept;
+    static std::expected<Frame, ProtocolErrors> decode(std::span<const uint8_t> inputBuffer, std::span<uint8_t> frameBytes, 
+        std::span<uint8_t> payloadInFrame) noexcept;
 };
 
 #endif // !PROTOCOL_DECODER_HEADER
