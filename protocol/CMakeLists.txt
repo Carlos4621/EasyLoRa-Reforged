@@ -62,7 +62,7 @@ option(EASYLORA_ENABLE_PROTOBUF "Generate protobuf code" ON)
 option(EASYLORA_ENABLE_NANOPB "Generate nanopb code" ON)
 
 set(GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/generated")
-set(PROTOBUF_GEN_DIR "${GENERATED_DIR}/protobuff")
+set(PROTOBUF_GEN_DIR "${GENERATED_DIR}/protobuf")
 set(NANOPB_GEN_DIR "${GENERATED_DIR}/nanopb")
 
 file(GLOB PROTO_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/proto/*.proto")

@@ -190,7 +190,7 @@ TEST(RawFrameDecoderTests, DecodeReturnsErrorOnInvalidCrc) {
     std::vector<uint8_t> decodedPayload(payload.size(), 0xEE);
     const auto decoded = FrameDecoder::decode(raw, decodedPayload);
     EXPECT_FALSE(decoded.has_value());
-    EXPECT_EQ(decoded.error(), ProtocolErrors::CRCMissMatch);
+    EXPECT_EQ(decoded.error(), ProtocolErrors::CRCMisMatch);
     EXPECT_TRUE(std::all_of(decodedPayload.begin(), decodedPayload.end(), [](uint8_t value) {
         return value == 0xEE;
     }));
