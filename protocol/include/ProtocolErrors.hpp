@@ -5,9 +5,10 @@
 
 /// @brief Tipos de error del protocolo
 enum class ProtocolErrors : uint8_t {
-    BufferTooSmall = 0,
+    OutputBufferTooSmall = 0,
     CRCMisMatch,
     FramePayloadTooSmall,
+    FramePayloadTooLong,
     InvalidPackageKind,
     InvalidMessageType,
     COBSREncodeError,

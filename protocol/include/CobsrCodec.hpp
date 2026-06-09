@@ -23,12 +23,14 @@ public:
     /// @brief Retorna el tamaño mínimo que debe tener el buffer de salida
     /// @param bufferToEncodeSize Tamaño del buffer a codificar
     /// @return Tamaño mínimo del buffer de salida
-    static size_t minumunOutputBufferSize(size_t bufferToEncodeSize) noexcept;
+    [[nodiscard]]
+    static constexpr size_t minumunOutputBufferSize(size_t bufferToEncodeSize) noexcept;
 
     /// @brief Retorna el offset necesario para realizar decodificación in-place
     /// @param bufferToEncodeSize Tamaño del buffer a codificar
     /// @return Offset necesario para decodificación in-place
-    static size_t offsetRequiredForInPlace(size_t bufferToEncodeSize) noexcept;
+    [[nodiscard]]
+    static constexpr size_t offsetRequiredForInPlace(size_t bufferToEncodeSize) noexcept;
 };
 
 #endif // !COBSR_CODEC_HEADER

@@ -6,7 +6,7 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrCodec::addCOBSR(std::span
     }
     
     if (outputBuffer.size() < minumunOutputBufferSize(inputBuffer.size())) {
-        return std::unexpected(ProtocolErrors::BufferTooSmall);
+        return std::unexpected(ProtocolErrors::OutputBufferTooSmall);
     }
 
     if (spansOverlap(inputBuffer, outputBuffer)) {
@@ -29,10 +29,10 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrCodec::addCOBSR(std::span
     return outputBuffer.first(cobsrStatus.out_len);
 }
 
-size_t CobsrCodec::minumunOutputBufferSize(size_t bufferToEncodeSize) noexcept {
+constexpr size_t CobsrCodec::minumunOutputBufferSize(size_t bufferToEncodeSize) noexcept {
     return COBSR_ENCODE_DST_BUF_LEN_MAX(bufferToEncodeSize);
 }
 
-size_t CobsrCodec::offsetRequiredForInPlace(size_t bufferToEncodeSize) noexcept{
+constexpr size_t CobsrCodec::offsetRequiredForInPlace(size_t bufferToEncodeSize) noexcept{
     return COBSR_ENCODE_SRC_OFFSET(bufferToEncodeSize);
 }

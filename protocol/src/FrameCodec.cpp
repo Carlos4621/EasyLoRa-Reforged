@@ -4,8 +4,8 @@
 #include "BitsUtilities.hpp"
 
 std::expected<std::span<uint8_t>, ProtocolErrors> FrameCodec::encode(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept {
-    if (!isEnoughBufferSize(outputBuffer.size(), frame.payload.size())) {
-        return std::unexpected(ProtocolErrors::BufferTooSmall);
+    if (outputBuffer.size() < minimumOutputBufferSize(frame)) {
+        return std::unexpected(ProtocolErrors::OutputBufferTooSmall);
     }
 
     const auto headerSpan{ std::span<const uint8_t>(outputBuffer.first(Frame::Header_Size)) };
@@ -34,8 +34,8 @@ std::expected<std::span<uint8_t>, ProtocolErrors> FrameCodec::encode(const Frame
     return outputBuffer.first(bytesWritten);
 }
 
-constexpr bool FrameCodec::isEnoughBufferSize(size_t bufferSize, size_t framePayloadSize) noexcept {
-    return bufferSize >= (framePayloadSize + Frame::CRC_Size + Frame::Header_Size);
+constexpr size_t FrameCodec::minimumOutputBufferSize(const Frame &frame) noexcept{
+    return frame.payload.size() + Frame::CRC_Size + Frame::Header_Size;
 }
 
 void FrameCodec::insertCRC(std::span<uint8_t> buffer, size_t& bytesWritten) noexcept {
