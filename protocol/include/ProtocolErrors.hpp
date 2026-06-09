@@ -6,7 +6,7 @@
 /// @brief Tipos de error del protocolo
 enum class ProtocolErrors : uint8_t {
     OutputBufferTooSmall = 0,
-    CRCMisMatch,
+    CRCMismatch,
     FramePayloadTooSmall,
     FramePayloadTooLong,
     InvalidPackageKind,
@@ -18,7 +18,7 @@ enum class ProtocolErrors : uint8_t {
     IncoherentFrame,
     CodificationError,
     HandlerWithIncorrectType,
-    FrameVersionMissmatch,
+    FrameVersionMismatch,
     InputBufferTooLong,
     InputBufferTooSmall,
 };

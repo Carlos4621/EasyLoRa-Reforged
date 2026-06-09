@@ -23,7 +23,7 @@ public:
     /// @brief Retorna el tamaño mínimo que debe tener el buffer de salida
     /// @param bufferToEncodeSize Tamaño del buffer a decodificar
     /// @return Tamaño mínimo del buffer de salida
-    static size_t minimunOutputBufferSize(size_t bufferToDecodeSize) noexcept;
+    static size_t minimumOutputBufferSize(size_t bufferToDecodeSize) noexcept;
 };
 
 #endif // !COBSR_DECODER_HEADER

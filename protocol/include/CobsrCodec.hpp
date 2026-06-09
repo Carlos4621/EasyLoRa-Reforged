@@ -24,7 +24,7 @@ public:
     /// @param bufferToEncodeSize Tamaño del buffer a codificar
     /// @return Tamaño mínimo del buffer de salida
     [[nodiscard]]
-    static constexpr size_t minumunOutputBufferSize(size_t bufferToEncodeSize) noexcept;
+    static constexpr size_t minumumOutputBufferSize(size_t bufferToEncodeSize) noexcept;
 
     /// @brief Retorna el offset necesario para realizar decodificación in-place
     /// @param bufferToEncodeSize Tamaño del buffer a codificar

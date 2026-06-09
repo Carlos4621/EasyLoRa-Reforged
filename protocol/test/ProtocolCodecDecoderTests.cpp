@@ -342,7 +342,7 @@ TEST(ProtocolDecoderTests, DecodePropagatesCrcMismatchAfterValidCobsr) {
     std::vector<uint8_t> payloadBuffer(payload.size(), 0xEE);
     const auto decoded = ProtocolDecoder::decode(encoded.value(), rawBuffer, payloadBuffer);
     EXPECT_FALSE(decoded.has_value());
-    EXPECT_EQ(decoded.error(), ProtocolErrors::CRCMisMatch);
+    EXPECT_EQ(decoded.error(), ProtocolErrors::CRCMismatch);
 }
 
 TEST(ProtocolDecoderTests, DecodePropagatesPayloadOutputTooSmall) {
@@ -399,7 +399,7 @@ TEST(ProtocolDecoderTests, DecodeAcceptsCurrentVersionAndRejectsOtherVersions) {
         std::vector<uint8_t> payloadBuffer(payload.size(), 0xEE);
         const auto decoded = ProtocolDecoder::decode(encoded.value(), rawBuffer, payloadBuffer);
         EXPECT_FALSE(decoded.has_value());
-        EXPECT_EQ(decoded.error(), ProtocolErrors::FrameVersionMissmatch);
+        EXPECT_EQ(decoded.error(), ProtocolErrors::FrameVersionMismatch);
     }
 
     auto raw = buildRawBuffer(kVersion, kKindValue, kFlags, kReserved, kSeq, kTypeValue, payload);
@@ -541,6 +541,6 @@ TEST(ProtocolDecoderTests, DecodeRejectsEverySingleByteRawMutationWithCrcMismatc
         std::vector<uint8_t> payloadBuffer(payload.size(), 0xEE);
         const auto decoded = ProtocolDecoder::decode(encoded.value(), rawBuffer, payloadBuffer);
         EXPECT_FALSE(decoded.has_value()) << "mutatedIndex=" << mutatedIndex;
-        EXPECT_EQ(decoded.error(), ProtocolErrors::CRCMisMatch) << "mutatedIndex=" << mutatedIndex;
+        EXPECT_EQ(decoded.error(), ProtocolErrors::CRCMismatch) << "mutatedIndex=" << mutatedIndex;
     }
 }

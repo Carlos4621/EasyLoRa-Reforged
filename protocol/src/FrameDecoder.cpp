@@ -19,7 +19,7 @@ std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_
     const auto bufferWithoutCRC{ inputRawBuffer.first(inputRawBuffer.size() - Frame::CRC_Size) };
 
     if (!isCRCValid(inputRawBuffer, bufferWithoutCRC)) {
-        return std::unexpected(ProtocolErrors::CRCMisMatch);
+        return std::unexpected(ProtocolErrors::CRCMismatch);
     } else if (!isEnoughPayloadSize(inputRawBuffer.size(), payloadInFrame.size())) {
         return std::unexpected(ProtocolErrors::FramePayloadTooSmall);
     }
@@ -30,7 +30,7 @@ std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_
     outputFrame.version = bufferWithoutCRC[currentByte++];
 
     if (outputFrame.version != Frame::Actual_Frame_Version) {
-        return std::unexpected(ProtocolErrors::FrameVersionMissmatch);
+        return std::unexpected(ProtocolErrors::FrameVersionMismatch);
     }
     
     if (!putPackageKind(bufferWithoutCRC, outputFrame.kind, currentByte)) {
