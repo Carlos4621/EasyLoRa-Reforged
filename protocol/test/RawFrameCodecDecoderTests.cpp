@@ -278,7 +278,7 @@ TEST(RawFrameDecoderTests, DecodeReturnsErrorWhenBufferTooSmall) {
     std::vector<uint8_t> decodedPayload(1, 0xEE);
     const auto decoded = FrameDecoder::decode(raw, decodedPayload);
     EXPECT_FALSE(decoded.has_value());
-    EXPECT_EQ(decoded.error(), ProtocolErrors::OutputBufferTooSmall);
+    EXPECT_EQ(decoded.error(), ProtocolErrors::InputBufferTooSmall);
     EXPECT_EQ(decodedPayload[0], 0xEE);
 }
 

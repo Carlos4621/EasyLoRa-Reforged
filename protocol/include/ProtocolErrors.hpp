@@ -20,6 +20,7 @@ enum class ProtocolErrors : uint8_t {
     HandlerWithIncorrectType,
     FrameVersionMissmatch,
     InputBufferTooLong,
+    InputBufferTooSmall,
 };
 
 #endif // !PROTOCOL_ERRORS_HEADER

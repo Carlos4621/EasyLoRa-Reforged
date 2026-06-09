@@ -9,7 +9,7 @@ std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_
     }
 
     if (inputRawBuffer.size() < Min_Raw_Buffer_Size) {
-        return std::unexpected(ProtocolErrors::OutputBufferTooSmall);
+        return std::unexpected(ProtocolErrors::InputBufferTooSmall);
     }
 
     if (spansOverlap(inputRawBuffer, payloadInFrame)) {
