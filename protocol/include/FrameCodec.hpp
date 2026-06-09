@@ -14,6 +14,9 @@
 class FrameCodec {
 public:
 
+    /// @brief Tamaño máximo permitido para el payload ubicado en el frame
+    static constexpr uint16_t Max_Frame_Payload_Size{ 512 };
+
     /// @brief Convierte a bytes un Frame y coloca su correspondiente CRC.
     /// @param frame Frame a codificar
     /// @param outputBuffer Buffer en el que se escribirá el contenido codificado y CRC
@@ -23,10 +26,13 @@ public:
     [[nodiscard]]
     static std::expected<std::span<uint8_t>, ProtocolErrors> encode(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept;
 
-private:
-
+    /// @brief Devuelve el tamaño mínimo que debe tener el buffer de salida
+    /// @param frame Frame a coificar
+    /// @return Tamaño mínimo del buffer de salida
     [[nodiscard]]
-    static constexpr bool isEnoughBufferSize(size_t bufferSize, size_t framePayloadSize) noexcept;
+    static constexpr size_t minimumOutputBufferSize(const Frame& frame) noexcept;
+
+private:
 
     static void insertCRC(std::span<uint8_t> buffer, size_t& bytesWritten) noexcept;
 

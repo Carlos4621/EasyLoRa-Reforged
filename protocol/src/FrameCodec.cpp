@@ -4,6 +4,10 @@
 #include "BitsUtilities.hpp"
 
 std::expected<std::span<uint8_t>, ProtocolErrors> FrameCodec::encode(const Frame& frame, std::span<uint8_t> outputBuffer) noexcept {
+    if (frame.payload.size() > Max_Frame_Payload_Size) {
+        return std::unexpected{ ProtocolErrors::FramePayloadTooLong };
+    }
+
     if (outputBuffer.size() < minimumOutputBufferSize(frame)) {
         return std::unexpected(ProtocolErrors::OutputBufferTooSmall);
     }
