@@ -450,6 +450,49 @@ TEST(ProtocolCodecDecoderTests, RoundTripSupportsBoundaryPayloadSizes) {
     }
 }
 
+TEST(ProtocolCodecDecoderTests, RoundTripSupportsMaximumPayloadSize) {
+    auto payload = buildPayload(FrameCodec::Max_Frame_Payload_Size);
+    const auto frame = makeFrame(payload);
+    const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
+    std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
+    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+
+    const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
+    ASSERT_TRUE(encoded.has_value());
+
+    std::vector<uint8_t> decodedRawBuffer(rawSize, 0xEE);
+    std::vector<uint8_t> decodedPayload(payload.size(), 0xEE);
+    const auto decoded = ProtocolDecoder::decode(encoded.value(), decodedRawBuffer, decodedPayload);
+    ASSERT_TRUE(decoded.has_value());
+    expectFrameMatches(decoded.value(), payload);
+}
+
+TEST(ProtocolCodecTests, EncodeRejectsPayloadLargerThanMaximum) {
+    auto payload = buildPayload(FrameCodec::Max_Frame_Payload_Size + 1U);
+    const auto frame = makeFrame(payload);
+    const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
+    std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
+    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+
+    const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
+    EXPECT_FALSE(encoded.has_value());
+    EXPECT_EQ(encoded.error(), ProtocolErrors::FramePayloadTooLong);
+}
+
+TEST(ProtocolDecoderTests, DecodeRejectsPayloadLargerThanMaximum) {
+    auto payload = buildPayload(FrameCodec::Max_Frame_Payload_Size + 1U);
+    auto raw = buildRawBuffer(kVersion, kKindValue, kFlags, kReserved, kSeq, kTypeValue, payload);
+    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
+    ASSERT_TRUE(encoded.has_value());
+
+    std::vector<uint8_t> rawBuffer(raw.size(), 0xEE);
+    std::vector<uint8_t> payloadBuffer(payload.size(), 0xEE);
+    const auto decoded = ProtocolDecoder::decode(encoded.value(), rawBuffer, payloadBuffer);
+    ASSERT_FALSE(decoded.has_value());
+    EXPECT_EQ(decoded.error(), ProtocolErrors::InputBufferTooLong);
+}
+
 TEST(ProtocolCodecTests, EncodeAcceptsExactlyRequiredRawBufferAndRejectsOneByteLess) {
     auto payload = buildPayload(1);
     const auto frame = makeFrame(payload);

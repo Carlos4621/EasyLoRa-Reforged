@@ -20,6 +20,16 @@ constexpr MessageType kType = MessageType::SendRadioPacket;
 constexpr uint8_t kKindValue = static_cast<uint8_t>(kKind);
 constexpr uint8_t kTypeValue = static_cast<uint8_t>(kType);
 
+std::vector<uint8_t> buildPayload(size_t size) {
+    std::vector<uint8_t> payload(size, 0x00);
+
+    for (size_t i = 0; i < size; ++i) {
+        payload[i] = static_cast<uint8_t>((i * 31U) & 0xFFU);
+    }
+
+    return payload;
+}
+
 Frame makeFrame(std::vector<uint8_t>& payload) {
     Frame frame{};
     frame.version = kVersion;
@@ -128,6 +138,31 @@ TEST(RawFrameCodecTests, EncodeSupportsEmptyPayload) {
     const auto expectedCrc = CRC::Calculate(output.data(), bufferSize - Frame::CRC_Size, CRC::CRC_16_CCITTFALSE());
     EXPECT_EQ(output[bufferSize - 2], getHighByte(expectedCrc));
     EXPECT_EQ(output[bufferSize - 1], getLowByte(expectedCrc));
+}
+
+TEST(RawFrameCodecTests, EncodeAcceptsMaximumPayloadSize) {
+    auto payload = buildPayload(FrameCodec::Max_Frame_Payload_Size);
+    const auto frame = makeFrame(payload);
+
+    const size_t bufferSize = Frame::Header_Size + payload.size() + Frame::CRC_Size;
+    std::vector<uint8_t> output(bufferSize);
+
+    const auto result = FrameCodec::encode(frame, output);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().size(), bufferSize);
+    EXPECT_TRUE(std::equal(payload.begin(), payload.end(), output.begin() + Frame::Header_Size));
+}
+
+TEST(RawFrameCodecTests, EncodeRejectsPayloadLargerThanMaximum) {
+    auto payload = buildPayload(FrameCodec::Max_Frame_Payload_Size + 1U);
+    const auto frame = makeFrame(payload);
+
+    const size_t bufferSize = Frame::Header_Size + payload.size() + Frame::CRC_Size;
+    std::vector<uint8_t> output(bufferSize);
+
+    const auto result = FrameCodec::encode(frame, output);
+    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), ProtocolErrors::FramePayloadTooLong);
 }
 
 TEST(RawFrameCodecTests, EncodeReturnsErrorWhenPackageKindInvalid) {
@@ -354,6 +389,28 @@ TEST(RawFrameDecoderTests, DecodeSupportsEmptyPayload) {
     EXPECT_EQ(decodedFrame.type, kType);
     EXPECT_EQ(decodedFrame.payload.size(), 0U);
     EXPECT_EQ(decodedPayload.size(), 0U);
+}
+
+TEST(RawFrameDecoderTests, DecodeAcceptsMaximumPayloadSize) {
+    auto payload = buildPayload(FrameCodec::Max_Frame_Payload_Size);
+    auto raw = buildRawBufferWithDefaults(kKindValue, kTypeValue, payload);
+
+    std::vector<uint8_t> decodedPayload(payload.size(), 0xEE);
+    const auto decoded = FrameDecoder::decode(raw, decodedPayload);
+    ASSERT_TRUE(decoded.has_value());
+
+    EXPECT_EQ(decoded.value().payload.size(), payload.size());
+    EXPECT_TRUE(std::equal(payload.begin(), payload.end(), decodedPayload.begin()));
+}
+
+TEST(RawFrameDecoderTests, DecodeRejectsPayloadLargerThanMaximum) {
+    auto payload = buildPayload(FrameCodec::Max_Frame_Payload_Size + 1U);
+    auto raw = buildRawBufferWithDefaults(kKindValue, kTypeValue, payload);
+
+    std::vector<uint8_t> decodedPayload(payload.size(), 0xEE);
+    const auto decoded = FrameDecoder::decode(raw, decodedPayload);
+    ASSERT_FALSE(decoded.has_value());
+    EXPECT_EQ(decoded.error(), ProtocolErrors::InputBufferTooLong);
 }
 
 TEST(RawFrameDecoderTests, DecodeRejectsInPlacePayloadBuffer) {

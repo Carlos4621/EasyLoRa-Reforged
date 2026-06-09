@@ -4,7 +4,11 @@
 #include "BitsUtilities.hpp"
 
 std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> payloadInFrame) noexcept {
-    if (inputRawBuffer.size() < Minimum_Raw_Buffer_Size) {
+    if (inputRawBuffer.size() > Max_Input_Buffer_Size) {
+        return std::unexpected{ ProtocolErrors::InputBufferTooLong };
+    }
+
+    if (inputRawBuffer.size() < Min_Raw_Buffer_Size) {
         return std::unexpected(ProtocolErrors::OutputBufferTooSmall);
     }
 

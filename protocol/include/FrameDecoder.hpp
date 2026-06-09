@@ -8,13 +8,17 @@
 #include "Frame.hpp"
 #include "ProtocolErrors.hpp"
 #include "SpanUtilities.hpp"
+#include "FrameCodec.hpp"
 
 /// @brief Clase que comprueba CRC y decodifica un Frame previamente codificado a bytes
 class FrameDecoder {
 public:
 
     /// @brief Tamaño mínimo que debería tener el buffer en donde se encuentra el Frame en bytes
-    static constexpr size_t Minimum_Raw_Buffer_Size{ Frame::Header_Size + Frame::CRC_Size };
+    static constexpr size_t Min_Raw_Buffer_Size{ Frame::Header_Size + Frame::CRC_Size };
+
+    /// @brief Tamaño máximo que puede tener el buffer de entrada
+    static constexpr size_t Max_Input_Buffer_Size{ Min_Raw_Buffer_Size + FrameCodec::Max_Frame_Payload_Size };
 
     /// @brief Decodifica el buffer con el Frame en bytes y coloca el resultado en un Frame
     /// @param inputRawBuffer Buffer en donde se encuentra el Frame en bytes
