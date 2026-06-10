@@ -12,11 +12,10 @@ std::expected<std::span<uint8_t>, ProtocolErrors> FrameCodec::encode(const Frame
         return std::unexpected(ProtocolErrors::OutputBufferTooSmall);
     }
 
-    const auto headerSpan{ std::span<const uint8_t>(outputBuffer.first(Frame::Header_Size)) };
-    if (spansOverlap(frame.payload, headerSpan)) {
+    if (spansOverlap(frame.payload, outputBuffer)) {
         return std::unexpected(ProtocolErrors::SameBufferError);
     }
-    
+
     size_t bytesWritten{ 0 };
     outputBuffer[bytesWritten++] = frame.version;
 
