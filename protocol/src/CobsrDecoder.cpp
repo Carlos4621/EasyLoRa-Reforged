@@ -6,7 +6,7 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrDecoder::decode(std::span
         return std::unexpected(ProtocolErrors::EmptyInputBuffer);
     }
 
-    if (outputBuffer.size() < minimunOutputBufferSize(inputBuffer.size())) {
+    if (outputBuffer.size() < minimumOutputBufferSize(inputBuffer.size())) {
         return std::unexpected(ProtocolErrors::OutputBufferTooSmall);
     }
 
@@ -22,8 +22,4 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrDecoder::decode(std::span
     }
 
     return outputBuffer.first(cobsrStatus.out_len);
-}
-
-size_t CobsrDecoder::minimunOutputBufferSize(size_t bufferToDecodeSize) noexcept {
-    return COBSR_DECODE_DST_BUF_LEN_MAX(bufferToDecodeSize);
 }

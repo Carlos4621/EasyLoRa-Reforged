@@ -11,11 +11,3 @@ std::expected<std::span<uint8_t>, ProtocolErrors> ProtocolCodec::encode(const Fr
 
     return CobsrCodec::addCOBSR(status.value(), outputBuffer);
 }
-
-constexpr size_t ProtocolCodec::minimumFrameBytesBufferSize(const Frame &frame) noexcept {
-    return FrameCodec::minimumOutputBufferSize(frame);
-}
-
-constexpr size_t ProtocolCodec::minimumOutputBufferSize(const Frame &frame) noexcept {
-    return CobsrCodec::minumumOutputBufferSize(minimumFrameBytesBufferSize(frame));
-}

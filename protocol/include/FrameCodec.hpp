@@ -48,4 +48,8 @@ private:
     static void insertTwoBytes(std::span<uint8_t> buffer, uint16_t value, size_t& bytesWritten) noexcept;
 };
 
+constexpr size_t FrameCodec::minimumOutputBufferSize(const Frame &frame) noexcept{
+    return frame.payload.size() + Frame::CRC_Size + Frame::Header_Size;
+}
+
 #endif // !FRAME_CODEC_HEADER

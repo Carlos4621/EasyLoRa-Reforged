@@ -38,10 +38,6 @@ std::expected<std::span<uint8_t>, ProtocolErrors> FrameCodec::encode(const Frame
     return outputBuffer.first(bytesWritten);
 }
 
-constexpr size_t FrameCodec::minimumOutputBufferSize(const Frame &frame) noexcept{
-    return frame.payload.size() + Frame::CRC_Size + Frame::Header_Size;
-}
-
 void FrameCodec::insertCRC(std::span<uint8_t> buffer, size_t& bytesWritten) noexcept {
     const auto CRC_Value{ CRC::Calculate(&buffer[0], bytesWritten, CRC::CRC_16_CCITTFALSE()) };
 

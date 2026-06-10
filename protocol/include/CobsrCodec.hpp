@@ -33,4 +33,12 @@ public:
     static constexpr size_t offsetRequiredForInPlace(size_t bufferToEncodeSize) noexcept;
 };
 
+constexpr size_t CobsrCodec::minumumOutputBufferSize(size_t bufferToEncodeSize) noexcept {
+    return COBSR_ENCODE_DST_BUF_LEN_MAX(bufferToEncodeSize);
+}
+
+constexpr size_t CobsrCodec::offsetRequiredForInPlace(size_t bufferToEncodeSize) noexcept{
+    return COBSR_ENCODE_SRC_OFFSET(bufferToEncodeSize);
+}
+
 #endif // !COBSR_CODEC_HEADER
