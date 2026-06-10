@@ -20,6 +20,26 @@ public:
     [[nodiscard]]
     static std::expected<Frame, ProtocolErrors> decode(std::span<const uint8_t> inputBuffer, std::span<uint8_t> frameBytes, 
         std::span<uint8_t> payloadInFrame) noexcept;
+
+    /// @brief Devuelve el tamaño mínimo que debe tener el buffer que almacenará el frame en forma de bytes
+    /// @param inputBufferSize Tamaño del buffer a decodificar
+    /// @return Tamaño mínimo de frameBytes
+    [[nodiscard]]
+    static constexpr size_t minimumFrameBytesBufferSize(size_t inputBufferSize) noexcept;
+
+    /// @brief Devuelve el tamaño mínimo que debe tener el buffer que almaneca el payload del frame
+    /// @param inputBufferSize Tamaño del buffer a decodificar
+    /// @return Tamaño mínimo de payloadInFrame
+    [[nodiscard]]
+    static constexpr std::expected<size_t, ProtocolErrors> minimumPayloadBufferSize(size_t inputBufferSize) noexcept;
 };
+
+constexpr size_t ProtocolDecoder::minimumFrameBytesBufferSize(size_t inputBufferSize) noexcept {
+    return CobsrDecoder::minimumOutputBufferSize(inputBufferSize);
+}
+
+constexpr std::expected<size_t, ProtocolErrors> ProtocolDecoder::minimumPayloadBufferSize(size_t inputBufferSize) noexcept {
+    return FrameDecoder::minimumPayloadBufferSize(inputBufferSize);
+}
 
 #endif // !PROTOCOL_DECODER_HEADER

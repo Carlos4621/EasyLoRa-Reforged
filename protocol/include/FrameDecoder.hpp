@@ -31,6 +31,12 @@ public:
     [[nodiscard]]
     static std::expected<Frame, ProtocolErrors> decode(std::span<const uint8_t> inputRawBuffer, std::span<uint8_t> payloadInFrame) noexcept;
 
+    /// @brief Devuelve el tamaño mínimo que debe tener el buffer que guarda el payload del frame
+    /// @param inputRawBufferSize Tamaño del buffer a decodificar
+    /// @return Tamaño mínimo de payloadInFrame
+    [[nodiscard]]
+    static constexpr std::expected<size_t, ProtocolErrors> minimumPayloadBufferSize(size_t inputRawBufferSize) noexcept;
+
 private:
 
     [[nodiscard]]
@@ -48,5 +54,13 @@ private:
     /// @brief Transfiere dos bytes a un uint16_t en formato Big Endian
     static void putTwoBytes(std::span<const uint8_t> buffer, uint16_t& value, size_t& currentByte) noexcept;
 };
+
+constexpr std::expected<size_t, ProtocolErrors> FrameDecoder::minimumPayloadBufferSize(size_t inputRawBufferSize) noexcept {
+    if (inputRawBufferSize < Min_Raw_Buffer_Size) {
+        return std::unexpected{ ProtocolErrors::InputBufferTooSmall };
+    }
+    
+    return inputRawBufferSize - Min_Raw_Buffer_Size;
+}
 
 #endif // !FRAME_DECODER_HEADER
