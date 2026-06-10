@@ -21,6 +21,18 @@ public:
     [[nodiscard]]
     static std::expected<std::span<uint8_t>, ProtocolErrors> encode(const Frame& frame, std::span<uint8_t> frameBytesBuffer,
         std::span<uint8_t> outputBuffer) noexcept;
+    
+    /// @brief Retorna el tamaño mínimo del buffer en el que se guardará los bytes del frame
+    /// @param frame Frame a codificar
+    /// @return Tamaño mínimo del frameBytesBuffer
+    [[nodiscard]]
+    static constexpr size_t minimumFrameBytesBufferSize(const Frame& frame) noexcept;
+
+    /// @brief Retorna el tamaño mínimo del buffer en que se guardará el resultado
+    /// @param frame Frame a codificar
+    /// @return Tamañomínimo del outputBuffer
+    [[nodiscard]]
+    static constexpr size_t minimumOutputBufferSize(const Frame& frame) noexcept;
 };
 
 #endif // !PROTOCOL_CODEC_HEADER
