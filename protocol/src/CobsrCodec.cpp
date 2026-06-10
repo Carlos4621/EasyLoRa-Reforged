@@ -19,8 +19,7 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrCodec::addCOBSR(std::span
         }
     }
 
-    const uint8_t* rawPtr{ inputBuffer.empty() ? outputBuffer.data() : inputBuffer.data() };
-    const auto cobsrStatus{ cobsr_encode(outputBuffer.data(), outputBuffer.size(), rawPtr, inputBuffer.size()) };
+    const auto cobsrStatus{ cobsr_encode(outputBuffer.data(), outputBuffer.size(), inputBuffer.data(), inputBuffer.size()) };
 
     if (cobsrStatus.status != COBSR_ENCODE_OK) {
         return std::unexpected(ProtocolErrors::COBSREncodeError);

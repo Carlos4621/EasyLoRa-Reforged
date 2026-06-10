@@ -10,10 +10,10 @@ inline bool spansOverlap(std::span<const uint8_t> left, std::span<const uint8_t>
         return false;
     }
 
-    const auto leftBegin = reinterpret_cast<std::uintptr_t>(left.data());
-    const auto leftEnd = leftBegin + left.size();
-    const auto rightBegin = reinterpret_cast<std::uintptr_t>(right.data());
-    const auto rightEnd = rightBegin + right.size();
+    const auto leftBegin{ reinterpret_cast<std::uintptr_t>(left.data()) };
+    const auto leftEnd{ leftBegin + left.size() };
+    const auto rightBegin{ reinterpret_cast<std::uintptr_t>(right.data()) };
+    const auto rightEnd{ rightBegin + right.size() };
 
     return (leftBegin < rightEnd) && (rightBegin < leftEnd);
 }
