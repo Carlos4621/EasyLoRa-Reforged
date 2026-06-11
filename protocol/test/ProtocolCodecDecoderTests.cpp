@@ -40,6 +40,22 @@ std::vector<uint8_t> buildPayload(size_t size) {
     return payload;
 }
 
+std::vector<uint8_t> buildPatternPayload(size_t size, uint32_t seed, bool forceManyZeros) {
+    std::vector<uint8_t> payload(size, 0x00);
+    uint32_t state{ seed };
+
+    for (size_t i{ 0 }; i < size; ++i) {
+        state = (state * 1103515245U) + 12345U;
+        auto value{ static_cast<uint8_t>((state >> 16U) & 0xFFU) };
+        if (forceManyZeros && ((i % 3U) == 0U)) {
+            value = 0x00;
+        }
+        payload[i] = value;
+    }
+
+    return payload;
+}
+
 Frame makeFrame(std::vector<uint8_t>& payload) {
     Frame frame{};
     frame.version = kVersion;
@@ -542,5 +558,211 @@ TEST(ProtocolDecoderTests, DecodeRejectsEverySingleByteRawMutationWithCrcMismatc
         const auto decoded = ProtocolDecoder::decode(encoded.value(), rawBuffer, payloadBuffer);
         EXPECT_FALSE(decoded.has_value()) << "mutatedIndex=" << mutatedIndex;
         EXPECT_EQ(decoded.error(), ProtocolErrors::CRCMismatch) << "mutatedIndex=" << mutatedIndex;
+    }
+}
+
+TEST(CobsrCodecDecoderTests, DeterministicFuzzRoundTripsShortLongAndZeroHeavyInputs) {
+    const std::array<size_t, 12> inputSizes{
+        0U,
+        1U,
+        2U,
+        3U,
+        16U,
+        31U,
+        32U,
+        63U,
+        64U,
+        127U,
+        255U,
+        FrameCodec::Max_Frame_Payload_Size
+    };
+
+    for (const auto inputSize : inputSizes) {
+        for (const bool zeroHeavy : std::array<bool, 2>{ false, true }) {
+            const auto raw = buildPatternPayload(inputSize, static_cast<uint32_t>(0xC0FFEEU + inputSize), zeroHeavy);
+            std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+
+            const auto encoded = CobsrCodec::addCOBSR(raw, encodedBuffer);
+            ASSERT_TRUE(encoded.has_value()) << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+            if (inputSize == 0U) {
+                EXPECT_EQ(encoded.value().size(), 0U) << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+                continue;
+            }
+
+            EXPECT_TRUE(std::none_of(encoded.value().begin(), encoded.value().end(), [](uint8_t value) {
+                return value == 0x00;
+            })) << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+
+            std::array<uint8_t, 2> prefix{ 0xA5, 0x5A };
+            std::array<uint8_t, 2> suffix{ 0xC3, 0x3C };
+            std::vector<uint8_t> guardedDecodedBuffer(encoded.value().size() + prefix.size() + suffix.size(), 0xEE);
+            std::copy(prefix.begin(), prefix.end(), guardedDecodedBuffer.begin());
+            std::copy(suffix.begin(), suffix.end(), guardedDecodedBuffer.end() - static_cast<std::ptrdiff_t>(suffix.size()));
+
+            auto outputSpan = std::span<uint8_t>(guardedDecodedBuffer.data() + prefix.size(), encoded.value().size());
+            const auto decoded = CobsrDecoder::decode(encoded.value(), outputSpan);
+            ASSERT_TRUE(decoded.has_value()) << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+
+            EXPECT_EQ(decoded.value().size(), raw.size()) << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+            EXPECT_TRUE(std::equal(raw.begin(), raw.end(), decoded.value().begin()))
+                << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+            EXPECT_TRUE(std::equal(prefix.begin(), prefix.end(), guardedDecodedBuffer.begin()))
+                << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+            EXPECT_TRUE(std::equal(suffix.begin(), suffix.end(), guardedDecodedBuffer.end() - static_cast<std::ptrdiff_t>(suffix.size())))
+                << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+        }
+    }
+}
+
+TEST(ProtocolCodecDecoderTests, DeterministicFuzzRoundTripsFramePayloadsAndKeepsGuardBytes) {
+    const std::array<size_t, 10> payloadSizes{
+        0U,
+        1U,
+        2U,
+        7U,
+        32U,
+        64U,
+        128U,
+        255U,
+        256U,
+        FrameCodec::Max_Frame_Payload_Size
+    };
+
+    for (const auto payloadSize : payloadSizes) {
+        auto payload = buildPatternPayload(payloadSize, static_cast<uint32_t>(0xFACEU + payloadSize), true);
+        const auto frame = makeFrame(payload);
+        const size_t rawSize{ ProtocolCodec::minimumFrameBytesBufferSize(frame) };
+        const size_t encodedSize{ ProtocolCodec::minimumOutputBufferSize(frame) };
+
+        std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
+        std::vector<uint8_t> encodedBuffer(encodedSize, 0xEE);
+        const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
+        ASSERT_TRUE(encoded.has_value()) << "payloadSize=" << payloadSize;
+
+        std::array<uint8_t, 2> rawPrefix{ 0x11, 0x22 };
+        std::array<uint8_t, 2> rawSuffix{ 0x33, 0x44 };
+        std::array<uint8_t, 2> payloadPrefix{ 0x55, 0x66 };
+        std::array<uint8_t, 2> payloadSuffix{ 0x77, 0x88 };
+        std::vector<uint8_t> guardedRawBuffer(rawSize + rawPrefix.size() + rawSuffix.size(), 0xEE);
+        std::vector<uint8_t> guardedPayloadBuffer(payload.size() + payloadPrefix.size() + payloadSuffix.size(), 0xEE);
+
+        std::copy(rawPrefix.begin(), rawPrefix.end(), guardedRawBuffer.begin());
+        std::copy(rawSuffix.begin(), rawSuffix.end(), guardedRawBuffer.end() - static_cast<std::ptrdiff_t>(rawSuffix.size()));
+        std::copy(payloadPrefix.begin(), payloadPrefix.end(), guardedPayloadBuffer.begin());
+        std::copy(payloadSuffix.begin(), payloadSuffix.end(), guardedPayloadBuffer.end() - static_cast<std::ptrdiff_t>(payloadSuffix.size()));
+
+        auto decodedRawSpan = std::span<uint8_t>(guardedRawBuffer.data() + rawPrefix.size(), rawSize);
+        auto decodedPayloadSpan = std::span<uint8_t>(guardedPayloadBuffer.data() + payloadPrefix.size(), payload.size());
+        const auto decoded = ProtocolDecoder::decode(encoded.value(), decodedRawSpan, decodedPayloadSpan);
+        ASSERT_TRUE(decoded.has_value()) << "payloadSize=" << payloadSize;
+
+        expectFrameMatches(decoded.value(), payload);
+        EXPECT_TRUE(std::equal(rawPrefix.begin(), rawPrefix.end(), guardedRawBuffer.begin())) << "payloadSize=" << payloadSize;
+        EXPECT_TRUE(std::equal(rawSuffix.begin(), rawSuffix.end(), guardedRawBuffer.end() - static_cast<std::ptrdiff_t>(rawSuffix.size())))
+            << "payloadSize=" << payloadSize;
+        EXPECT_TRUE(std::equal(payloadPrefix.begin(), payloadPrefix.end(), guardedPayloadBuffer.begin())) << "payloadSize=" << payloadSize;
+        EXPECT_TRUE(std::equal(payloadSuffix.begin(), payloadSuffix.end(), guardedPayloadBuffer.end() - static_cast<std::ptrdiff_t>(payloadSuffix.size())))
+            << "payloadSize=" << payloadSize;
+    }
+}
+
+TEST(ProtocolDecoderTests, DecodeRejectsTruncatedEncodedFrames) {
+    auto payload = buildPatternPayload(64, 0x1234U, true);
+    const auto frame = makeFrame(payload);
+    const size_t rawSize{ ProtocolCodec::minimumFrameBytesBufferSize(frame) };
+    std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
+    std::vector<uint8_t> encodedBuffer(ProtocolCodec::minimumOutputBufferSize(frame), 0xEE);
+    const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
+    ASSERT_TRUE(encoded.has_value());
+
+    for (size_t truncatedSize{ 1 }; truncatedSize < encoded.value().size(); ++truncatedSize) {
+        const auto truncatedInput = encoded.value().first(truncatedSize);
+        std::vector<uint8_t> decodedRawBuffer(rawSize, 0xEE);
+        std::vector<uint8_t> decodedPayloadBuffer(payload.size(), 0xEE);
+
+        const auto decoded = ProtocolDecoder::decode(truncatedInput, decodedRawBuffer, decodedPayloadBuffer);
+        EXPECT_FALSE(decoded.has_value()) << "truncatedSize=" << truncatedSize;
+    }
+}
+
+TEST(ProtocolDecoderTests, DecodeRejectsSemanticMutationsWithRecomputedCrc) {
+    auto payload = buildPayload(8);
+
+    struct MutationCase {
+        uint8_t version;
+        uint8_t kind;
+        uint8_t type;
+        size_t payloadSize;
+        ProtocolErrors expectedError;
+    };
+
+    const std::array<MutationCase, 4> mutationCases{ {
+        { 0x02, kKindValue, kTypeValue, payload.size(), ProtocolErrors::FrameVersionMismatch },
+        { kVersion, 0xFF, kTypeValue, payload.size(), ProtocolErrors::InvalidPackageKind },
+        { kVersion, kKindValue, 0x99, payload.size(), ProtocolErrors::InvalidMessageType },
+        { kVersion, kKindValue, kTypeValue, FrameCodec::Max_Frame_Payload_Size + 1U, ProtocolErrors::InputBufferTooLong },
+    } };
+
+    for (const auto& mutationCase : mutationCases) {
+        auto mutatedPayload = buildPayload(mutationCase.payloadSize);
+        if (mutationCase.payloadSize == payload.size()) {
+            mutatedPayload = payload;
+        }
+
+        auto raw = buildRawBuffer(mutationCase.version,
+                                  mutationCase.kind,
+                                  kFlags,
+                                  kReserved,
+                                  kSeq,
+                                  mutationCase.type,
+                                  mutatedPayload);
+        std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+        const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
+        ASSERT_TRUE(encoded.has_value());
+
+        std::vector<uint8_t> rawBuffer(CobsrDecoder::minimumOutputBufferSize(encoded.value().size()), 0xEE);
+        std::vector<uint8_t> payloadBuffer(mutatedPayload.size(), 0xEE);
+        const auto decoded = ProtocolDecoder::decode(encoded.value(), rawBuffer, payloadBuffer);
+
+        ASSERT_FALSE(decoded.has_value()) << "version=" << static_cast<int>(mutationCase.version)
+                                          << " kind=" << static_cast<int>(mutationCase.kind)
+                                          << " type=" << static_cast<int>(mutationCase.type)
+                                          << " payloadSize=" << mutationCase.payloadSize;
+        EXPECT_EQ(decoded.error(), mutationCase.expectedError);
+    }
+}
+
+TEST(ProtocolDecoderTests, DecodeAcceptsEveryValidKindTypePairWithRecomputedCrc) {
+    const std::array<uint8_t, 4> validKinds{
+        static_cast<uint8_t>(PackageKind::Request),
+        static_cast<uint8_t>(PackageKind::Response),
+        static_cast<uint8_t>(PackageKind::Event),
+        static_cast<uint8_t>(PackageKind::Error)
+    };
+    const std::array<uint8_t, 6> validTypes{
+        static_cast<uint8_t>(MessageType::GetDeviceInfo),
+        static_cast<uint8_t>(MessageType::GetConfiguration),
+        static_cast<uint8_t>(MessageType::SetConfiguration),
+        static_cast<uint8_t>(MessageType::SendRadioPacket),
+        static_cast<uint8_t>(MessageType::RadioPacketReceived),
+        static_cast<uint8_t>(MessageType::GenericError)
+    };
+    auto payload = buildPayload(3);
+
+    for (const auto kind : validKinds) {
+        for (const auto type : validTypes) {
+            auto raw = buildRawBuffer(kVersion, kind, kFlags, kReserved, kSeq, type, payload);
+            std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+            const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
+            ASSERT_TRUE(encoded.has_value()) << "kind=" << static_cast<int>(kind) << " type=" << static_cast<int>(type);
+
+            std::vector<uint8_t> rawBuffer(CobsrDecoder::minimumOutputBufferSize(encoded.value().size()), 0xEE);
+            std::vector<uint8_t> payloadBuffer(payload.size(), 0xEE);
+            const auto decoded = ProtocolDecoder::decode(encoded.value(), rawBuffer, payloadBuffer);
+            ASSERT_TRUE(decoded.has_value()) << "kind=" << static_cast<int>(kind) << " type=" << static_cast<int>(type);
+            EXPECT_EQ(decoded.value().kind, static_cast<PackageKind>(kind));
+            EXPECT_EQ(decoded.value().type, static_cast<MessageType>(type));
+            EXPECT_TRUE(std::equal(payload.begin(), payload.end(), decoded.value().payload.begin()));
+        }
     }
 }
