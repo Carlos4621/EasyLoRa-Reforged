@@ -1,4 +1,6 @@
 build/
 generated/
-TODO.txt
 build-codex-tests/
+build-dev-tests/
+build-sanitize/
+build-strict/

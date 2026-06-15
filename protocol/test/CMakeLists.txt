@@ -20,10 +20,9 @@ target_compile_features(protocol_codec_tests PRIVATE cxx_std_23)
 
 gtest_discover_tests(protocol_codec_tests)
 
-if(EASYLORA_ENABLE_NANOPB AND TARGET protobuf-nanopb-static)
+if(TARGET protobuf-nanopb-static)
 	add_executable(nanopb_compatibility_tests
 		NanopbCompatibilityTests.cpp
-		"${NANOPB_GEN_DIR}/DeviceInfo.pb.c"
 	)
 
 	add_dependencies(nanopb_compatibility_tests generate_protocol_code)

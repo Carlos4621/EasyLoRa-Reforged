@@ -430,6 +430,22 @@ TEST(ProtocolDecoderTests, DecodeAcceptsCurrentVersionAndRejectsOtherVersions) {
     expectFrameMatches(decoded.value(), payload);
 }
 
+TEST(ProtocolDecoderTests, CrcMismatchTakesPrecedenceOverInvalidHeaderFields) {
+    auto payload = buildPayload(3);
+    auto raw = buildRawBuffer(0x02, 0xFF, kFlags, kReserved, kSeq, 0x99, payload);
+    raw.back() ^= 0xFF;
+
+    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
+    ASSERT_TRUE(encoded.has_value());
+
+    std::vector<uint8_t> rawBuffer(raw.size(), 0xEE);
+    std::vector<uint8_t> payloadBuffer(payload.size(), 0xEE);
+    const auto decoded = ProtocolDecoder::decode(encoded.value(), rawBuffer, payloadBuffer);
+    ASSERT_FALSE(decoded.has_value());
+    EXPECT_EQ(decoded.error(), ProtocolErrors::CRCMismatch);
+}
+
 TEST(ProtocolDecoderTests, DecodePreservesFlagsAndReservedBits) {
     auto payload = buildPayload(1);
     constexpr uint8_t flags{ 0xFF };

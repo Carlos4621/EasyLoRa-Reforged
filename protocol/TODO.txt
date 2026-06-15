@@ -1,0 +1,164 @@
+# TODO - protocol
+
+Fecha del analisis: 2026-06-15
+
+Estado verificado:
+- `cmake --preset dev-tests && cmake --build --preset dev-tests && ctest --preset dev-tests`
+- `cmake --preset strict && cmake --build --preset strict && ctest --preset strict`
+- `cmake --preset sanitize && cmake --build --preset sanitize && ctest --preset sanitize`
+- Resultado: 60/60 tests pasan en los tres presets.
+
+Notas:
+- `build/` no tenia tests registrados al ejecutar `ctest --test-dir build --output-on-failure`.
+- `TODO.txt` esta en `.gitignore`; este archivo sirve como lista local de trabajo.
+
+## P0 - Posibles errores o contratos confusos
+
+Nota: Revisar si ya se implementó correctamente y borrar en caso de afirmativo
+- [x] Revisar `ProtocolDecoder::minimumPayloadBufferSize(size_t inputBufferSize)`.
+  - El nombre y el comentario dicen que recibe el tamano del buffer codificado que entra a `ProtocolDecoder`.
+  - La implementacion actual delega directo en `FrameDecoder::minimumPayloadBufferSize(inputBufferSize)`, pero ese helper espera un tamano raw, no un tamano COBS/R.
+  - Decidir si el helper debe devolver un maximo seguro para `payloadInFrame`, si debe decodificar primero, o si debe renombrarse/documentarse como estimacion conservadora.
+  - Tests sugeridos:
+    - `ProtocolDecoderTests.MinimumPayloadBufferSizeMatchesDecodedPayloadForKnownEncodedFrames`
+    - `ProtocolDecoderTests.MinimumPayloadBufferSizeIsSafeForZeroHeavyCobsrFrames`
+    - `ProtocolDecoderTests.MinimumPayloadBufferSizeRejectsImpossibleEncodedSizes`
+
+- [ ] Definir la politica real de `flags` y `reserved`.
+  - Ahora se preservan y hay test para eso.
+  - Falta decidir si bits desconocidos deben aceptarse siempre, rechazarse, o reservarse por version de protocolo.
+  - Tests sugeridos despues de decidir la politica:
+    - Si se preservan: matriz de valores para `flags` y `reserved`.
+    - Si se rechazan: errores especificos para bits no permitidos.
+
+## P1 - Mejoras de build, empaquetado y mantenibilidad
+
+- [ ] Agregar reglas de instalacion/export de CMake.
+  - Hoy `EasyLoRa::protocol` funciona con `add_subdirectory`, pero no hay `install(TARGETS ...)`, `install(EXPORT ...)` ni config package.
+  - Tests sugeridos:
+    - Instalar en un prefijo temporal.
+    - Compilar un consumidor externo usando `find_package(EasyLoRaProtocol CONFIG REQUIRED)`.
+
+- [ ] Evitar generar archivos protobuf/nanopb dentro del source tree por defecto.
+  - Actualmente `GENERATED_DIR` apunta a `${CMAKE_CURRENT_SOURCE_DIR}/generated`.
+  - Esto puede ensuciar el checkout y complica builds paralelos o configuraciones distintas.
+  - Mejor usar `${CMAKE_CURRENT_BINARY_DIR}/generated` y exponer includes desde ahi.
+  - Tests sugeridos:
+    - Configurar dos builds separados con opciones distintas.
+    - Verificar que no aparecen archivos nuevos bajo `generated/` del source tree.
+
+## P1 - Tests nuevos recomendados
+
+- [ ] Tests directos para helpers de tamano.
+  - `FrameCodec::minimumOutputBufferSize`
+  - `FrameDecoder::minimumPayloadBufferSize`
+  - `ProtocolCodec::minimumFrameBytesBufferSize`
+  - `ProtocolCodec::minimumOutputBufferSize`
+  - `ProtocolDecoder::minimumFrameBytesBufferSize`
+  - `ProtocolDecoder::minimumPayloadBufferSize`
+  - Casos: payload 0, payload 1, payload maximo, payload mayor al maximo, input raw menor al minimo.
+
+- [ ] Tests de spans y aliasing mas finos.
+  - Ya hay cobertura para algunos overlaps.
+  - Faltan casos con spans adyacentes que no se solapan y overlaps parciales por el final.
+  - Tests sugeridos:
+    - `SpanUtilitiesTests.AdjacentSpansDoNotOverlap`
+    - `SpanUtilitiesTests.PartialOverlapAtBeginningOrEndIsDetected`
+    - `CobsrCodecTests.AcceptsAdjacentInputAndOutputBuffers`
+    - `FrameCodecTests.AcceptsAdjacentPayloadAndOutputBuffers`
+
+- [ ] Tests para secuencia `seq`.
+  - README documenta big endian y wrap-around natural.
+  - Ya se prueba un valor fijo, pero falta matriz de limites.
+  - Tests sugeridos:
+    - `FrameCodecDecoderTests.SeqRoundTripsBoundaryValues` con `0x0000`, `0x0001`, `0x00FF`, `0x0100`, `0xFFFF`.
+
+- [ ] Tests de COBS/R contra vectores conocidos.
+  - Los round-trips prueban consistencia interna.
+  - Faltan vectores fijos para detectar cambios incompatibles en la libreria COBS/R externa.
+  - Tests sugeridos:
+    - Codificar entradas conocidas con muchos ceros.
+    - Decodificar buffers COBS/R conocidos.
+
+- [ ] Tests de errores sin mutar payload de salida.
+  - Algunos errores ya validan que el buffer queda intacto.
+  - Extenderlo a todos los errores principales de `FrameDecoder` y `ProtocolDecoder`.
+  - Casos: CRC invalido, version invalida, kind invalido, type invalido, input demasiado largo, payload demasiado pequeno.
+
+- [ ] Tests de `NanopbCompatibilityTests` para mas mensajes reales.
+  - Actualmente solo `DeviceInfo`.
+  - Cuando existan protos para configuracion o paquetes de radio, cubrir:
+    - payload valido maximo.
+    - campos opcionales/default.
+    - payload nanopb corrupto despues de decodificar frame correcto.
+
+- [ ] Test de transporte/stream separado para delimitador `0x00`.
+  - README deja claro que el delimitador no pertenece a `ProtocolCodec`.
+  - No meter esta responsabilidad en `ProtocolDecoder`.
+  - Crear una capa nueva tipo `StreamFrameReader`/`StreamFrameWriter` si se necesita separar frames consecutivos.
+  - Tests sugeridos:
+    - Dos frames consecutivos separados por `0x00`.
+    - Bytes parciales entre lecturas.
+    - Delimitador doble o frame vacio.
+
+## P2 - Documentacion
+
+- [ ] Documentar todos los errores de `ProtocolErrors`.
+  - Para cada error: que capa lo produce, condicion exacta y si el buffer de salida queda sin cambios.
+
+- [ ] Documentar ownership/lifetime de `Frame::payload`.
+  - `Frame` guarda un `std::span`, no copia el payload.
+  - Agregar ejemplos de uso seguro y advertencias para no devolver frames que apunten a buffers temporales.
+
+- [ ] Documentar claramente los tamanos de buffers para decode.
+  - Separar conceptos:
+    - tamano del input COBS/R.
+    - tamano maximo del raw decodificado.
+    - tamano necesario para payload.
+  - Esto debe quedar alineado con `ProtocolDecoder::minimumFrameBytesBufferSize` y `minimumPayloadBufferSize`.
+
+- [ ] Agregar guia corta de build.
+  - Dependencias: COBS, CRCpp, Protobuf, nanopb.
+  - Ejemplos:
+    - build minimo.
+    - build con tests.
+    - build sin protobuf/nanopb.
+    - ejecutar `ctest`.
+
+## P2 - API y diseno futuro
+
+- [ ] Considerar tipos fuertes para buffers de decode.
+  - El orden `inputBuffer`, `frameBytes`, `payloadInFrame` es facil de confundir.
+  - Una estructura `ProtocolDecodeBuffers` podria hacer mas clara la llamada.
+
+- [ ] Considerar una API que devuelva tamanos reales sin obligar a sobreasignar.
+  - Para decode COBS/R, el payload real solo se conoce despues de decodificar.
+  - Puede valer la pena exponer un flujo en dos pasos o un decoder que use un scratch buffer administrado por el usuario.
+
+- [ ] Evaluar versionado de protocolo mas explicito.
+  - `Frame::Actual_Frame_Version` es constante.
+  - Si habra compatibilidad con versiones futuras, definir tabla de versiones, migracion o rechazo por feature flags.
+
+- [ ] Evaluar mapa de compatibilidad `PackageKind` x `MessageType`.
+  - Hoy todo kind valido con todo type valido es aceptado.
+  - Si hay combinaciones invalidas a nivel semantico, esa politica pertenece a otra capa o debe entrar explicitamente al decoder.
+
+## P3 - Calidad operativa
+
+- [ ] Agregar CI.
+  - Jobs sugeridos:
+    - build minimal sin protobuf/nanopb.
+    - build con tests completos.
+    - build strict warnings.
+    - build sanitizers.
+    - install/export consumer.
+
+- [ ] Agregar benchmarks pequenos.
+  - Medir encode/decode para payload 0, 32, 255, 512.
+  - Separar costo raw frame, COBS/R y nanopb.
+
+- [ ] Revisar dependencias externas.
+  - COBS se busca como instalacion local.
+  - CRCpp se busca como header instalado.
+  - nanopb se puede descargar con `FetchContent`.
+  - Decidir si se quiere una estrategia uniforme para reproducibilidad.

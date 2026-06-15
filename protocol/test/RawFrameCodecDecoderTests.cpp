@@ -307,6 +307,17 @@ TEST(RawFrameDecoderTests, DecodeRejectsVersionMismatch) {
     EXPECT_EQ(decoded.error(), ProtocolErrors::FrameVersionMismatch);
 }
 
+TEST(RawFrameDecoderTests, CrcMismatchTakesPrecedenceOverInvalidHeaderFields) {
+    std::vector<uint8_t> payload{ 0x10, 0x20, 0x30 };
+    auto raw = buildRawBuffer(0x02, 0xFF, kFlags, kReserved, kSeq, 0x99, payload);
+    raw.back() ^= 0xFF;
+
+    std::vector<uint8_t> decodedPayload(payload.size(), 0xEE);
+    const auto decoded = FrameDecoder::decode(raw, decodedPayload);
+    ASSERT_FALSE(decoded.has_value());
+    EXPECT_EQ(decoded.error(), ProtocolErrors::CRCMismatch);
+}
+
 TEST(RawFrameDecoderTests, DecodeSupportsEmptyPayload) {
     std::vector<uint8_t> payload{};
     auto raw = buildRawBufferWithDefaults(kKindValue, kTypeValue, payload);

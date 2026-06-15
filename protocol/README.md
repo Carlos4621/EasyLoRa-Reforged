@@ -21,6 +21,8 @@ Frame raw antes de COBS/R:
 
 El CRC se calcula sobre todos los bytes anteriores al campo `crc`: header completo mas payload. El payload maximo aceptado por `FrameCodec::encode` es `FrameCodec::Max_Frame_Payload_Size`.
 
+En decode, la validacion de CRC ocurre antes de confiar en los campos del header. Si el CRC no coincide, `FrameDecoder` y `ProtocolDecoder` devuelven `ProtocolErrors::CRCMismatch` aunque `version`, `kind` o `type` tambien contengan valores invalidos.
+
 `ProtocolCodec::encode` produce:
 
 ```text

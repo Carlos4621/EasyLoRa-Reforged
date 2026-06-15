@@ -1,0 +1,75 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "dev-tests",
+      "displayName": "Development Tests",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-dev-tests",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "EASYLORA_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "strict",
+      "displayName": "Strict Warnings",
+      "inherits": "dev-tests",
+      "binaryDir": "${sourceDir}/build-strict",
+      "cacheVariables": {
+        "EASYLORA_ENABLE_WARNINGS": "ON"
+      }
+    },
+    {
+      "name": "sanitize",
+      "displayName": "ASan and UBSan",
+      "inherits": "dev-tests",
+      "binaryDir": "${sourceDir}/build-sanitize",
+      "cacheVariables": {
+        "EASYLORA_ENABLE_SANITIZERS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev-tests",
+      "configurePreset": "dev-tests"
+    },
+    {
+      "name": "strict",
+      "configurePreset": "strict"
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev-tests",
+      "configurePreset": "dev-tests",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "strict",
+      "configurePreset": "strict",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
