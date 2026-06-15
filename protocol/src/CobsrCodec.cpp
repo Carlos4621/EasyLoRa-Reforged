@@ -5,7 +5,7 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrCodec::addCOBSR(std::span
         return outputBuffer.first(0);
     }
     
-    if (outputBuffer.size() < minumumOutputBufferSize(inputBuffer.size())) {
+    if (outputBuffer.size() < minimumOutputBufferSize(inputBuffer.size())) {
         return std::unexpected(ProtocolErrors::OutputBufferTooSmall);
     }
 

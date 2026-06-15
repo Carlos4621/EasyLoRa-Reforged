@@ -24,7 +24,7 @@ public:
     /// @param bufferToEncodeSize Tamaño del buffer a codificar
     /// @return Tamaño mínimo del buffer de salida
     [[nodiscard]]
-    static constexpr size_t minumumOutputBufferSize(size_t bufferToEncodeSize) noexcept;
+    static constexpr size_t minimumOutputBufferSize(size_t bufferToEncodeSize) noexcept;
 
     /// @brief Retorna el offset necesario para realizar decodificación in-place
     /// @param bufferToEncodeSize Tamaño del buffer a codificar
@@ -33,7 +33,7 @@ public:
     static constexpr size_t offsetRequiredForInPlace(size_t bufferToEncodeSize) noexcept;
 };
 
-constexpr size_t CobsrCodec::minumumOutputBufferSize(size_t bufferToEncodeSize) noexcept {
+constexpr size_t CobsrCodec::minimumOutputBufferSize(size_t bufferToEncodeSize) noexcept {
     return COBSR_ENCODE_DST_BUF_LEN_MAX(bufferToEncodeSize);
 }
 
