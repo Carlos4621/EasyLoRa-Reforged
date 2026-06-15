@@ -54,7 +54,7 @@ TEST(GetDeviceInfoHandlerTests, RejectsTooSmallBuffer) {
     auto result = GetDeviceInfoHandle::handle(frame, buffer, bytes_written);
 
     ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error(), ProtocolErrors::BufferTooSmall);
+    EXPECT_EQ(result.error(), ProtocolErrors::OutputBufferTooSmall);
     EXPECT_EQ(bytes_written, 19u);
 }
 

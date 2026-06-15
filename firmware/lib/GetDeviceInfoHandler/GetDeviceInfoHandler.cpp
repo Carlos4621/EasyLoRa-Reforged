@@ -35,7 +35,7 @@ DeviceInfo GetDeviceInfoHandle::getDeviceInfo() noexcept {
 
 std::expected<Frame, ProtocolErrors> GetDeviceInfoHandle::handleRequest(const Frame &frame, std::span<uint8_t> framePayloadBuffer, size_t &bytesWritten) noexcept {
     if (framePayloadBuffer.size() < DeviceInfo_size) {
-        return std::unexpected{ ProtocolErrors::BufferTooSmall };
+        return std::unexpected{ ProtocolErrors::OutputBufferTooSmall };
     }
 
     Frame response{

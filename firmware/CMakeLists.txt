@@ -146,9 +146,6 @@ if (FIRMWARE_BUILD_TESTS)
     )
     FetchContent_MakeAvailable(googletest)
 
-    set(NANOPB_GEN_DIR "${CMAKE_CURRENT_LIST_DIR}/../protocol/generated/nanopb")
-    file(GLOB NANOPB_GEN_SOURCES CONFIGURE_DEPENDS "${NANOPB_GEN_DIR}/*.pb.c")
-
     if (NOT TARGET protobuf-nanopb-static AND NOT TARGET protobuf-nanopb)
         FetchContent_Declare(
             nanopb
@@ -157,6 +154,35 @@ if (FIRMWARE_BUILD_TESTS)
         )
         FetchContent_MakeAvailable(nanopb)
     endif()
+
+    find_package(Protobuf REQUIRED)
+
+    set(NANOPB_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/nanopb")
+    set(DEVICE_INFO_PROTO "${CMAKE_CURRENT_LIST_DIR}/../protocol/proto/DeviceInfo.proto")
+    set(DEVICE_INFO_OPTIONS "${CMAKE_CURRENT_LIST_DIR}/../protocol/proto/DeviceInfo.options")
+    set(DEVICE_INFO_NANOPB_C "${NANOPB_GEN_DIR}/DeviceInfo.pb.c")
+    set(DEVICE_INFO_NANOPB_H "${NANOPB_GEN_DIR}/DeviceInfo.pb.h")
+    set(NANOPB_GEN_SOURCES "${DEVICE_INFO_NANOPB_C}")
+    set(NANOPB_PLUGIN "${nanopb_SOURCE_DIR}/generator/protoc-gen-nanopb")
+
+    file(MAKE_DIRECTORY "${NANOPB_GEN_DIR}")
+    add_custom_command(
+        OUTPUT
+            "${DEVICE_INFO_NANOPB_C}"
+            "${DEVICE_INFO_NANOPB_H}"
+        COMMAND "${Protobuf_PROTOC_EXECUTABLE}"
+            --proto_path=${CMAKE_CURRENT_LIST_DIR}/../protocol/proto
+            --plugin=protoc-gen-nanopb=${NANOPB_PLUGIN}
+            --nanopb_opt=-I${CMAKE_CURRENT_LIST_DIR}/../protocol/proto
+            --nanopb_out=${NANOPB_GEN_DIR}
+            ${DEVICE_INFO_PROTO}
+        DEPENDS
+            "${DEVICE_INFO_PROTO}"
+            "${DEVICE_INFO_OPTIONS}"
+        COMMENT "Generating nanopb for DeviceInfo"
+        VERBATIM
+    )
+    add_custom_target(firmware_generate_nanopb DEPENDS "${DEVICE_INFO_NANOPB_C}" "${DEVICE_INFO_NANOPB_H}")
 
     enable_testing()
 
@@ -175,6 +201,7 @@ if (FIRMWARE_BUILD_TESTS)
         lib/GetDeviceInfoHandler/GetDeviceInfoHandler.cpp
         ${NANOPB_GEN_SOURCES}
     )
+    add_dependencies(getdeviceinfohandler_tests firmware_generate_nanopb)
     target_compile_features(getdeviceinfohandler_tests PRIVATE cxx_std_23)
     target_include_directories(getdeviceinfohandler_tests PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/lib/GetDeviceInfoHandler
@@ -207,4 +234,3 @@ if (FIRMWARE_BUILD_TESTS)
     add_test(NAME framewaiter_tests COMMAND framewaiter_tests)
     add_test(NAME getdeviceinfohandler_tests COMMAND getdeviceinfohandler_tests)
 endif()
-
