@@ -39,7 +39,7 @@ constexpr size_t ProtocolDecoder::minimumFrameBytesBufferSize(size_t inputBuffer
 }
 
 constexpr std::expected<size_t, ProtocolErrors> ProtocolDecoder::minimumPayloadBufferSize(size_t inputBufferSize) noexcept {
-    return FrameDecoder::minimumPayloadBufferSize(inputBufferSize);
+    return FrameDecoder::minimumPayloadBufferSize(minimumFrameBytesBufferSize(inputBufferSize));
 }
 
 #endif // !PROTOCOL_DECODER_HEADER
