@@ -20,7 +20,9 @@ std::expected<Frame, ProtocolErrors> FrameDecoder::decode(std::span<const uint8_
 
     if (!isCRCValid(inputRawBuffer, bufferWithoutCRC)) {
         return std::unexpected(ProtocolErrors::CRCMismatch);
-    } else if (!isEnoughPayloadSize(inputRawBuffer.size(), payloadInFrame.size())) {
+    } 
+    
+    if (!isEnoughPayloadSize(inputRawBuffer.size(), payloadInFrame.size())) {
         return std::unexpected(ProtocolErrors::FramePayloadTooSmall);
     }
 
