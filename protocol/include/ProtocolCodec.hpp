@@ -40,7 +40,7 @@ constexpr size_t ProtocolCodec::minimumFrameBytesBufferSize(const Frame &frame) 
 }
 
 constexpr size_t ProtocolCodec::minimumOutputBufferSize(const Frame &frame) noexcept {
-    return CobsrCodec::minumumOutputBufferSize(minimumFrameBytesBufferSize(frame));
+    return CobsrCodec::minimumOutputBufferSize(minimumFrameBytesBufferSize(frame));
 }
 
 #endif // !PROTOCOL_CODEC_HEADER
