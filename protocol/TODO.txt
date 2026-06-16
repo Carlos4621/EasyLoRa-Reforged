@@ -1,16 +1,17 @@
 # TODO - protocol
 
-Fecha del analisis: 2026-06-15
+Fecha del analisis: 2026-06-16
 
 Estado verificado:
 - `cmake --preset dev-tests && cmake --build --preset dev-tests && ctest --preset dev-tests`
-- `cmake --preset strict && cmake --build --preset strict && ctest --preset strict`
-- `cmake --preset sanitize && cmake --build --preset sanitize && ctest --preset sanitize`
-- Resultado: 72/72 tests pasan en los tres presets.
+- `cmake --preset strict -DNANOPB_ROOT=/home/carlos4621/EasyLoRa-Reforged/protocol/build-dev-tests/_deps/nanopb-src && cmake --build --preset strict && ctest --test-dir build-strict --output-on-failure`
+- `cmake --preset sanitize -DNANOPB_ROOT=/home/carlos4621/EasyLoRa-Reforged/protocol/build-dev-tests/_deps/nanopb-src && cmake --build --preset sanitize && ctest --test-dir build-sanitize --output-on-failure`
+- Resultado: 76/76 tests pasan en los tres presets.
 
 Notas:
 - `build/` no tenia tests registrados al ejecutar `ctest --test-dir build --output-on-failure`.
 - `TODO.txt` esta en `.gitignore`; este archivo sirve como lista local de trabajo.
+- `strict` y `sanitize` se configuraron con `NANOPB_ROOT` apuntando a la copia local ya descargada para evitar repetir el clone de `FetchContent`.
 
 ## P0 - Posibles errores o contratos confusos
 
@@ -30,7 +31,8 @@ Notas:
     - campos opcionales/default.
     - payload nanopb corrupto despues de decodificar frame correcto.
 
-- [ ] Test de transporte/stream separado para delimitador `0x00`.
+Nota: Se debe crear tests que hagan estas pruebas PERO no tocar el código de producción
+- [x] Test de transporte/stream separado para delimitador `0x00`.
   - README deja claro que el delimitador no pertenece a `ProtocolCodec`.
   - No meter esta responsabilidad en `ProtocolDecoder`.
   - Crear una capa nueva tipo `StreamFrameReader`/`StreamFrameWriter` si se necesita separar frames consecutivos.
@@ -40,10 +42,6 @@ Notas:
     - Delimitador doble o frame vacio.
 
 ## P2 - API y diseno futuro
-
-- [ ] Considerar tipos fuertes para buffers de decode.
-  - El orden `inputBuffer`, `frameBytes`, `payloadInFrame` es facil de confundir.
-  - Una estructura `ProtocolDecodeBuffers` podria hacer mas clara la llamada.
 
 - [ ] Considerar una API que devuelva tamanos reales sin obligar a sobreasignar.
   - Para decode COBS/R, el payload real solo se conoce despues de decodificar.
@@ -70,9 +68,3 @@ Notas:
 - [ ] Agregar benchmarks pequenos.
   - Medir encode/decode para payload 0, 32, 255, 512.
   - Separar costo raw frame, COBS/R y nanopb.
-
-- [ ] Revisar dependencias externas.
-  - COBS se busca como instalacion local.
-  - CRCpp se busca como header instalado.
-  - nanopb se puede descargar con `FetchContent`.
-  - Decidir si se quiere una estrategia uniforme para reproducibilidad.

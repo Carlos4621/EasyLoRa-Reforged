@@ -29,7 +29,7 @@ En decode, la validacion de CRC ocurre antes de confiar en los campos del header
 COBSR(version | kind | flags | reserved | seq_hi | seq_lo | type | payload | crc_hi | crc_lo)
 ```
 
-Si el transporte necesita separar frames consecutivos, el delimitador `0x00` pertenece a la capa de stream/transporte y debe agregarse fuera de `ProtocolCodec`. De la misma forma, `ProtocolDecoder` espera recibir un frame COBS/R sin ese delimitador.
+Si el transporte necesita separar frames consecutivos, el delimitador `0x00` pertenece a la capa de stream/transporte y debe agregarse fuera de `ProtocolCodec`. De la misma forma, `ProtocolDecoder` espera recibir un frame COBS/R sin ese delimitador. `StreamFrameWriter` agrega ese delimitador para enviar por stream y `StreamFrameReader` separa bytes recibidos hasta entregar cada frame COBS/R sin `0x00`.
 
 ## Buffers y lifetime
 
@@ -47,7 +47,13 @@ En decode:
 - `ProtocolDecoder::minimumPayloadBufferSize(inputSize)` recibe el tamano del input COBS/R y devuelve un tamano conservador para `payloadInFrame`.
 - `FrameDecoder::minimumPayloadBufferSize(rawSize)` recibe el tamano raw, no el tamano COBS/R.
 
-`ProtocolDecoder::decode(inputBuffer, frameBytes, payloadInFrame)` usa `frameBytes` como scratch buffer para el frame raw y copia el payload valido en `payloadInFrame`. `frameBytes` y `payloadInFrame` deben ser buffers distintos.
+`ProtocolDecoder::decode(ProtocolDecodeBuffers{...})` usa `frameBytes` como scratch buffer para el frame raw y copia el payload valido en `payloadInFrame`. `frameBytes` y `payloadInFrame` deben ser buffers distintos. La sobrecarga `ProtocolDecoder::decode(inputBuffer, frameBytes, payloadInFrame)` se mantiene como compatibilidad y delega en la estructura.
+
+## Transporte serial
+
+`StreamFrameWriter::write(encodedFrame, outputBuffer)` copia un frame COBS/R sin delimitador y agrega un `0x00` final. `StreamFrameWriter::minimumOutputBufferSize(encodedFrameSize)` devuelve `encodedFrameSize + 1`.
+
+`StreamFrameReader` recibe bytes en chunks y conserva bytes parciales hasta encontrar `0x00`. Cuando encuentra el delimitador devuelve `StreamFrameReadStatus::FrameReady` con el frame sin `0x00`; si aun falta el delimitador devuelve `NeedMoreData`. Un delimitador con frame vacio devuelve `ProtocolErrors::EmptyInputBuffer`.
 
 ## Errores
 
@@ -97,6 +103,12 @@ Dependencias requeridas:
 - CRCpp instalado como headers (`CRC.h` o `CRCpp.h`).
 - Protobuf y `protoc`.
 - nanopb. Si `NANOPB_ROOT` no se define, CMake descarga nanopb 0.4.8 con `FetchContent`.
+
+Politica actual de dependencias externas:
+
+- COBS y CRCpp son dependencias explicitas del entorno de build; usar `COBS_ROOT` y `CRCPP_ROOT` cuando no esten en rutas del sistema.
+- Protobuf/protoc tambien se resuelven desde el entorno para evitar descargar toolchains de generacion en configure.
+- nanopb mantiene el fallback con `FetchContent` porque el generador y las fuentes C se integran al build local y ya estan fijados a la version 0.4.8.
 
 Los esquemas compartidos viven en `../messages`. Cada proyecto genera sus clases
 en su propio directorio de build; CMake conserva los archivos existentes y

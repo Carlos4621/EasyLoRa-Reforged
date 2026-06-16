@@ -1,0 +1,5 @@
+{
+    "cmake.buildDirectory": "${workspaceFolder}/build-codex",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build-codex/compile_commands.json",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}
