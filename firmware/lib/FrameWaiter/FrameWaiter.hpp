@@ -37,7 +37,7 @@ public:
     /// @brief Añade un rango de bytes al buffer y lo analiza para indicar su hubo un frame completo llegado u overflow
     /// @param range Rango de bytes a insertar
     /// @warning Solo debe usarse por parte del productor
-    void feed(std::span<uint8_t> range) noexcept;
+    void feed(std::span<const uint8_t> range) noexcept;
 
     /// @brief Intenta leer un frame del ring buffer
     /// @param outputBuffer Puntero al buffer donde se colocarán los datos
