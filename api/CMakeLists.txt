@@ -17,7 +17,9 @@ add_subdirectory(
 
 add_library(easylora_api
 	src/EasyLoRa.cpp
+	src/SerialTransport.cpp
 )
+
 add_library(EasyLoRa::api ALIAS easylora_api)
 
 target_include_directories(easylora_api PUBLIC
