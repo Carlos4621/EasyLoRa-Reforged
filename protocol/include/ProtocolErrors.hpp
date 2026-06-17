@@ -21,6 +21,7 @@ enum class ProtocolErrors : uint8_t {
     FrameVersionMismatch,
     InputBufferTooLong,
     InputBufferTooSmall,
+    COBSRInputBufferWithoutDelimiter,
 };
 
 #endif // !PROTOCOL_ERRORS_HEADER

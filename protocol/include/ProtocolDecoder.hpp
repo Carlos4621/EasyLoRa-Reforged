@@ -10,7 +10,7 @@
 /// @brief Organiza los buffers usados para la decodificación de protocolo.
 struct ProtocolDecoderBuffers {
 
-    /// @brief Buffer con el frame codificado en COBS/R, sin delimitador 0x00.
+    /// @brief Buffer con el frame codificado en COBS/R, con delimitador final 0x00.
     std::span<const uint8_t> inputBuffer;
 
     /// @brief Buffer intermedio donde se guardará el frame raw después de decodificar COBS/R.

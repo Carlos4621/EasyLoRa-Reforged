@@ -8,13 +8,14 @@
 #include "ProtocolErrors.hpp"
 #include "SpanUtilities.hpp"
 #include "cobs/cobsr.h"
+#include "Frame.hpp"
 
 /// @brief Clase que decodifica un buffer codificado con COBS/R y coloca el resultado en otro buffer
 class CobsrDecoder {
 public:
 
     /// @brief Decodifica un buffer codificado con COBS/R y coloca el resultado en otro buffer. Decodificación in-place posible solo sin offset.
-    /// @param inputBuffer Buffer codificado en COBS/R
+    /// @param inputBuffer Buffer codificado en COBS/R, se espera con delimitador
     /// @param outputBuffer Buffer en el que se colocará el inputBuffer descodificado
     /// @return std::expected con std::span que apunta al buffer con el resultado, en caso de error un ProtocolErrors
     [[nodiscard]]
@@ -27,7 +28,11 @@ public:
 };
 
 constexpr size_t CobsrDecoder::minimumOutputBufferSize(size_t bufferToDecodeSize) noexcept {
-    return COBSR_DECODE_DST_BUF_LEN_MAX(bufferToDecodeSize);
+    if (bufferToDecodeSize == 0) {
+        return 0;
+    }
+
+    return COBSR_DECODE_DST_BUF_LEN_MAX(bufferToDecodeSize - sizeof(Frame::Frame_Delimiter));
 }
 
 #endif // !COBSR_DECODER_HEADER

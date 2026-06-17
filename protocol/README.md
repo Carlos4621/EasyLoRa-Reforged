@@ -4,7 +4,7 @@ En esta carpeta se recopilan los headers y fuentes en comun para la API y firmwa
 
 ## Formato binario del frame
 
-`FrameCodec` convierte un `Frame` a bytes en formato raw y agrega el CRC. `ProtocolCodec` toma ese frame raw y le aplica COBS/R para que pueda viajar por un transporte serial. El resultado de `ProtocolCodec` no incluye delimitador `0x00`.
+`FrameCodec` convierte un `Frame` a bytes en formato raw y agrega el CRC. `ProtocolCodec` toma ese frame raw, le aplica COBS/R para que pueda viajar por un transporte serial y agrega el delimitador final `0x00`.
 
 Frame raw antes de COBS/R:
 
@@ -26,10 +26,10 @@ En decode, la validacion de CRC ocurre antes de confiar en los campos del header
 `ProtocolCodec::encode` produce:
 
 ```text
-COBSR(version | kind | flags | reserved | seq_hi | seq_lo | type | payload | crc_hi | crc_lo)
+COBSR(version | kind | flags | reserved | seq_hi | seq_lo | type | payload | crc_hi | crc_lo) | 0x00
 ```
 
-Si el transporte necesita separar frames consecutivos, el delimitador `0x00` pertenece a la capa de stream/transporte y debe agregarse fuera de `ProtocolCodec`. De la misma forma, `ProtocolDecoder` espera recibir un frame COBS/R sin ese delimitador. `StreamFrameWriter` agrega ese delimitador para enviar por stream y `StreamFrameReader` separa bytes recibidos hasta entregar cada frame COBS/R sin `0x00`.
+`ProtocolDecoder` espera recibir el frame COBS/R con su delimitador final `0x00`. Si una capa de stream separa frames consecutivos al encontrar ese byte, debe conservarlo en el span que entrega al decoder.
 
 ## Buffers y lifetime
 
@@ -39,21 +39,15 @@ En encode:
 
 - `FrameCodec::minimumOutputBufferSize(frame)` devuelve `Frame::Header_Size + frame.payload.size() + Frame::CRC_Size`.
 - `ProtocolCodec::minimumFrameBytesBufferSize(frame)` devuelve el tamano del frame raw intermedio.
-- `ProtocolCodec::minimumOutputBufferSize(frame)` devuelve el tamano maximo necesario para COBS/R.
+- `ProtocolCodec::minimumOutputBufferSize(frame)` devuelve el tamano maximo necesario para COBS/R mas el delimitador final.
 
 En decode:
 
-- `ProtocolDecoder::minimumFrameBytesBufferSize(inputSize)` recibe el tamano del input COBS/R y devuelve un tamano seguro para el buffer raw intermedio.
-- `ProtocolDecoder::minimumPayloadBufferSize(inputSize)` recibe el tamano del input COBS/R y devuelve un tamano conservador para `payloadInFrame`.
+- `ProtocolDecoder::minimumFrameBytesBufferSize(inputSize)` recibe el tamano del input COBS/R con delimitador y devuelve un tamano seguro para el buffer raw intermedio.
+- `ProtocolDecoder::minimumPayloadBufferSize(inputSize)` recibe el tamano del input COBS/R con delimitador y devuelve un tamano conservador para `payloadInFrame`.
 - `FrameDecoder::minimumPayloadBufferSize(rawSize)` recibe el tamano raw, no el tamano COBS/R.
 
-`ProtocolDecoder::decode(ProtocolDecodeBuffers{...})` usa `frameBytes` como scratch buffer para el frame raw y copia el payload valido en `payloadInFrame`. `frameBytes` y `payloadInFrame` deben ser buffers distintos. La sobrecarga `ProtocolDecoder::decode(inputBuffer, frameBytes, payloadInFrame)` se mantiene como compatibilidad y delega en la estructura.
-
-## Transporte serial
-
-`StreamFrameWriter::write(encodedFrame, outputBuffer)` copia un frame COBS/R sin delimitador y agrega un `0x00` final. `StreamFrameWriter::minimumOutputBufferSize(encodedFrameSize)` devuelve `encodedFrameSize + 1`.
-
-`StreamFrameReader` recibe bytes en chunks y conserva bytes parciales hasta encontrar `0x00`. Cuando encuentra el delimitador devuelve `StreamFrameReadStatus::FrameReady` con el frame sin `0x00`; si aun falta el delimitador devuelve `NeedMoreData`. Un delimitador con frame vacio devuelve `ProtocolErrors::EmptyInputBuffer`.
+`ProtocolDecoder::decode(ProtocolDecoderBuffers{...})` usa `frameBytes` como scratch buffer para el frame raw y copia el payload valido en `payloadInFrame`. `frameBytes` y `payloadInFrame` deben ser buffers distintos.
 
 ## Errores
 

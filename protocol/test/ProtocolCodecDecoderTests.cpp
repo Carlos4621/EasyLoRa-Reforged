@@ -136,7 +136,7 @@ void expectEncodedFrameDecodes(std::span<const uint8_t> encodedFrame, std::span<
 
 TEST(CobsrCodecTests, EncodeReturnsErrorWhenBufferTooSmall) {
     const auto raw = buildPayload(32);
-    const size_t requiredSize = COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size());
+    const size_t requiredSize = CobsrCodec::minimumOutputBufferSize(raw.size());
     std::vector<uint8_t> output(requiredSize - 1, 0xEE);
 
     const auto encoded = CobsrCodec::addCOBSR(raw, output);
@@ -144,18 +144,18 @@ TEST(CobsrCodecTests, EncodeReturnsErrorWhenBufferTooSmall) {
     EXPECT_EQ(encoded.error(), ProtocolErrors::OutputBufferTooSmall);
 }
 
-TEST(CobsrCodecTests, EncodeSupportsEmptyInput) {
+TEST(CobsrCodecTests, EncodeRejectsEmptyInput) {
     const std::vector<uint8_t> raw{};
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
 
     const auto encoded = CobsrCodec::addCOBSR(raw, encodedBuffer);
-    ASSERT_TRUE(encoded.has_value());
-    EXPECT_EQ(encoded.value().size(), 0U);
+    EXPECT_FALSE(encoded.has_value());
+    EXPECT_EQ(encoded.error(), ProtocolErrors::EmptyInputBuffer);
 }
 
 TEST(CobsrCodecTests, EncodeSupportsInPlaceWithOffset) {
     const auto raw = buildPayload(128);
-    const size_t requiredSize = COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size());
+    const size_t requiredSize = CobsrCodec::minimumOutputBufferSize(raw.size());
     const size_t offset = COBSR_ENCODE_SRC_OFFSET(raw.size());
 
     std::vector<uint8_t> buffer(requiredSize + offset, 0xCD);
@@ -178,7 +178,7 @@ TEST(CobsrCodecTests, EncodeSupportsInPlaceWithOffset) {
 
 TEST(CobsrCodecTests, EncodeRejectsOverlappingBufferWithoutOffset) {
     const auto raw = buildPayload(64);
-    const size_t requiredSize = COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size());
+    const size_t requiredSize = CobsrCodec::minimumOutputBufferSize(raw.size());
     std::vector<uint8_t> buffer(requiredSize, 0xCD);
 
     std::copy(raw.begin(), raw.end(), buffer.begin());
@@ -217,11 +217,12 @@ TEST(CobsrCodecTests, EncodeMatchesReferenceCApiForKnownInputs) {
         const auto wrapped = CobsrCodec::addCOBSR(raw, wrappedOutput);
         ASSERT_TRUE(wrapped.has_value());
 
-        std::vector<uint8_t> referenceOutput(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+        std::vector<uint8_t> referenceOutput(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
         const auto reference = cobsr_encode(referenceOutput.data(), referenceOutput.size(), raw.data(), raw.size());
         ASSERT_EQ(reference.status, COBSR_ENCODE_OK);
 
-        EXPECT_EQ(wrapped.value().size(), reference.out_len);
+        ASSERT_EQ(wrapped.value().back(), Frame::Frame_Delimiter);
+        EXPECT_EQ(wrapped.value().size(), reference.out_len + sizeof(Frame::Frame_Delimiter));
         EXPECT_TRUE(std::equal(referenceOutput.begin(), referenceOutput.begin() + static_cast<std::ptrdiff_t>(reference.out_len),
                                wrapped.value().begin()));
     }
@@ -229,11 +230,12 @@ TEST(CobsrCodecTests, EncodeMatchesReferenceCApiForKnownInputs) {
 
 TEST(CobsrCodecDecoderTests, EncodeDecodeRoundTrip) {
     const auto raw = buildPayload(300);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
 
     const auto encoded = CobsrCodec::addCOBSR(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
-    EXPECT_TRUE(std::none_of(encoded.value().begin(), encoded.value().end(), [](uint8_t value) {
+    ASSERT_EQ(encoded.value().back(), Frame::Frame_Delimiter);
+    EXPECT_TRUE(std::none_of(encoded.value().begin(), encoded.value().end() - 1, [](uint8_t value) {
         return value == 0x00;
     }));
 
@@ -246,12 +248,12 @@ TEST(CobsrCodecDecoderTests, EncodeDecodeRoundTrip) {
 
 TEST(CobsrDecoderTests, DecodeReturnsErrorWhenOutputBufferTooSmall) {
     const auto raw = buildPayload(48);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
 
     const auto encoded = CobsrCodec::addCOBSR(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
 
-    std::vector<uint8_t> decodedBuffer(encoded.value().size() - 1, 0xEE);
+    std::vector<uint8_t> decodedBuffer(raw.size() - 1, 0xEE);
     const auto decoded = CobsrDecoder::decode(encoded.value(), decodedBuffer);
     EXPECT_FALSE(decoded.has_value());
     EXPECT_EQ(decoded.error(), ProtocolErrors::OutputBufferTooSmall);
@@ -268,7 +270,7 @@ TEST(CobsrDecoderTests, DecodeReturnsErrorWhenInputBufferEmpty) {
 
 TEST(CobsrDecoderTests, DecodeRejectsOverlappingBufferWithDifferentStart) {
     const auto raw = buildPayload(32);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
 
     const auto encoded = CobsrCodec::addCOBSR(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
@@ -284,7 +286,7 @@ TEST(CobsrDecoderTests, DecodeRejectsOverlappingBufferWithDifferentStart) {
 }
 
 TEST(CobsrDecoderTests, DecodeRejectsZeroByteInInput) {
-    std::vector<uint8_t> encodedBuffer{ 0x11, 0x00, 0x22 };
+    std::vector<uint8_t> encodedBuffer{ 0x11, 0x00, 0x22, Frame::Frame_Delimiter };
     std::vector<uint8_t> decodedBuffer(encodedBuffer.size(), 0xEE);
 
     const auto decoded = CobsrDecoder::decode(encodedBuffer, decodedBuffer);
@@ -294,7 +296,7 @@ TEST(CobsrDecoderTests, DecodeRejectsZeroByteInInput) {
 
 TEST(CobsrDecoderTests, DecodeSupportsInPlaceBuffer) {
     const auto raw = buildPayload(64);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
 
     const auto encoded = CobsrCodec::addCOBSR(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
@@ -315,11 +317,12 @@ TEST(ProtocolCodecDecoderTests, EncodeDecodeRoundTripWithCompleteFrame) {
     const auto frame = makeFrame(payload);
     const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
     std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(rawSize), 0xEE);
 
     const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
-    EXPECT_TRUE(std::none_of(encoded.value().begin(), encoded.value().end(), [](uint8_t value) {
+    ASSERT_EQ(encoded.value().back(), Frame::Frame_Delimiter);
+    EXPECT_TRUE(std::none_of(encoded.value().begin(), encoded.value().end() - 1, [](uint8_t value) {
         return value == 0x00;
     }));
 
@@ -338,19 +341,17 @@ TEST(ProtocolStreamDelimiterTests, ExternalSplitDecodesTwoConsecutiveDelimitedFr
 
     std::vector<uint8_t> stream{};
     stream.insert(stream.end(), firstEncoded.begin(), firstEncoded.end());
-    stream.push_back(0x00U);
     stream.insert(stream.end(), secondEncoded.begin(), secondEncoded.end());
-    stream.push_back(0x00U);
 
     const auto firstDelimiter = std::find(stream.begin(), stream.end(), 0x00U);
     ASSERT_NE(firstDelimiter, stream.end());
-    expectEncodedFrameDecodes(std::span<const uint8_t>(stream.data(), static_cast<size_t>(firstDelimiter - stream.begin())),
+    expectEncodedFrameDecodes(std::span<const uint8_t>(stream.data(), static_cast<size_t>(firstDelimiter - stream.begin()) + 1U),
                               firstPayload);
 
     const auto secondBegin = firstDelimiter + 1;
     const auto secondDelimiter = std::find(secondBegin, stream.end(), 0x00U);
     ASSERT_NE(secondDelimiter, stream.end());
-    expectEncodedFrameDecodes(std::span<const uint8_t>(&(*secondBegin), static_cast<size_t>(secondDelimiter - secondBegin)),
+    expectEncodedFrameDecodes(std::span<const uint8_t>(&(*secondBegin), static_cast<size_t>(secondDelimiter - secondBegin) + 1U),
                               secondPayload);
 }
 
@@ -358,7 +359,6 @@ TEST(ProtocolStreamDelimiterTests, ExternalSplitKeepsPartialBytesBetweenReads) {
     auto payload = buildPatternPayload(31, 0xCAFEU, true);
     const auto encoded = encodeFrameToVector(makeFrame(payload));
     std::vector<uint8_t> delimited{ encoded.begin(), encoded.end() };
-    delimited.push_back(0x00U);
     const auto splitAt = delimited.size() / 2U;
 
     std::vector<uint8_t> pending{};
@@ -368,7 +368,7 @@ TEST(ProtocolStreamDelimiterTests, ExternalSplitKeepsPartialBytesBetweenReads) {
     pending.insert(pending.end(), delimited.begin() + static_cast<std::ptrdiff_t>(splitAt), delimited.end());
     const auto delimiter = std::find(pending.begin(), pending.end(), 0x00U);
     ASSERT_NE(delimiter, pending.end());
-    expectEncodedFrameDecodes(std::span<const uint8_t>(pending.data(), static_cast<size_t>(delimiter - pending.begin())),
+    expectEncodedFrameDecodes(std::span<const uint8_t>(pending.data(), static_cast<size_t>(delimiter - pending.begin()) + 1U),
                               payload);
 }
 
@@ -383,7 +383,7 @@ TEST(ProtocolStreamDelimiterTests, EmptyFrameFromDoubleDelimiterIsRejectedBefore
     EXPECT_EQ(decoded.error(), ProtocolErrors::EmptyInputBuffer);
 }
 
-TEST(ProtocolStreamDelimiterTests, ProtocolDecoderRejectsInputThatStillContainsDelimiter) {
+TEST(ProtocolStreamDelimiterTests, ProtocolDecoderRejectsInputWithExtraDelimiter) {
     auto payload = buildPayload(8);
     auto encoded = encodeFrameToVector(makeFrame(payload));
     encoded.push_back(0x00U);
@@ -423,7 +423,7 @@ TEST(ProtocolCodecTests, EncodePropagatesRawBufferTooSmall) {
     const auto frame = makeFrame(payload);
     const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
     std::vector<uint8_t> rawBuffer(rawSize - 1, 0xEE);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(rawSize), 0xEE);
 
     const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
     EXPECT_FALSE(encoded.has_value());
@@ -435,7 +435,7 @@ TEST(ProtocolCodecTests, EncodePropagatesCobsrBufferTooSmall) {
     const auto frame = makeFrame(payload);
     const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
     std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize) - 1, 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(rawSize) - 1, 0xEE);
 
     const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
     EXPECT_FALSE(encoded.has_value());
@@ -448,7 +448,7 @@ TEST(ProtocolCodecTests, EncodePropagatesInvalidPackageKind) {
     frame.kind = static_cast<PackageKind>(0xFF);
     const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
     std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(rawSize), 0xEE);
 
     const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
     EXPECT_FALSE(encoded.has_value());
@@ -461,7 +461,7 @@ TEST(ProtocolCodecTests, EncodePropagatesInvalidMessageType) {
     frame.type = static_cast<MessageType>(0x99);
     const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
     std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(rawSize), 0xEE);
 
     const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
     EXPECT_FALSE(encoded.has_value());
@@ -472,7 +472,7 @@ TEST(ProtocolCodecTests, EncodePropagatesInvalidOverlap) {
     auto payload = buildPayload(4);
     const auto frame = makeFrame(payload);
     const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
-    std::vector<uint8_t> sharedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+    std::vector<uint8_t> sharedBuffer(CobsrCodec::minimumOutputBufferSize(rawSize), 0xEE);
 
     const auto encoded = ProtocolCodec::encode(frame,
                                                std::span<uint8_t>(sharedBuffer.data(), rawSize),
@@ -488,7 +488,7 @@ TEST(ProtocolDecoderTests, DecodePropagatesInvalidCobsr) {
 
     const auto decoded = ProtocolDecoder::decode({encodedBuffer, rawBuffer, payloadBuffer});
     EXPECT_FALSE(decoded.has_value());
-    EXPECT_EQ(decoded.error(), ProtocolErrors::COBSRDecodeError);
+    EXPECT_EQ(decoded.error(), ProtocolErrors::COBSRInputBufferWithoutDelimiter);
 }
 
 TEST(ProtocolDecoderTests, MinimumPayloadBufferSizeRejectsImpossibleEncodedSizes) {
@@ -501,7 +501,7 @@ TEST(ProtocolDecoderTests, DecodePropagatesCrcMismatchAfterValidCobsr) {
     auto payload = buildPayload(4);
     auto raw = buildRawBuffer(kVersion, kKindValue, kFlags, kReserved, kSeq, kTypeValue, payload);
     raw.back() ^= 0xFF;
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
     const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
 
@@ -515,7 +515,7 @@ TEST(ProtocolDecoderTests, DecodePropagatesCrcMismatchAfterValidCobsr) {
 TEST(ProtocolDecoderTests, DecodePropagatesPayloadOutputTooSmall) {
     auto payload = buildPayload(4);
     auto raw = buildRawBuffer(kVersion, kKindValue, kFlags, kReserved, kSeq, kTypeValue, payload);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
     const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
 
@@ -529,7 +529,7 @@ TEST(ProtocolDecoderTests, DecodePropagatesPayloadOutputTooSmall) {
 TEST(ProtocolDecoderTests, DecodePropagatesInvalidPackageKindAfterValidCobsr) {
     auto payload = buildPayload(4);
     auto raw = buildRawBuffer(kVersion, 0xFF, kFlags, kReserved, kSeq, kTypeValue, payload);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
     const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
 
@@ -543,7 +543,7 @@ TEST(ProtocolDecoderTests, DecodePropagatesInvalidPackageKindAfterValidCobsr) {
 TEST(ProtocolDecoderTests, DecodePropagatesInvalidMessageTypeAfterValidCobsr) {
     auto payload = buildPayload(4);
     auto raw = buildRawBuffer(kVersion, kKindValue, kFlags, kReserved, kSeq, 0x99, payload);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
     const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
 
@@ -575,7 +575,7 @@ TEST(ProtocolDecoderTests, DecodeErrorsLeavePayloadBufferUnchanged) {
     for (const auto& errorCase : errorCases) {
         auto payload = buildPayload(errorCase.payloadSize);
         auto raw = buildRawBuffer(errorCase.version, errorCase.kind, kFlags, kReserved, kSeq, errorCase.type, payload);
-        std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+        std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
         const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
         ASSERT_TRUE(encoded.has_value());
 
@@ -595,7 +595,7 @@ TEST(ProtocolDecoderTests, DecodeAcceptsCurrentVersionAndRejectsOtherVersions) {
     auto payload = buildPayload(1);
     for (const auto version : std::array<uint8_t, 3>{ 0x00, 0x02, 0xFF }) {
         auto raw = buildRawBuffer(version, kKindValue, kFlags, kReserved, kSeq, kTypeValue, payload);
-        std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+        std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
         const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
         ASSERT_TRUE(encoded.has_value());
 
@@ -607,7 +607,7 @@ TEST(ProtocolDecoderTests, DecodeAcceptsCurrentVersionAndRejectsOtherVersions) {
     }
 
     auto raw = buildRawBuffer(kVersion, kKindValue, kFlags, kReserved, kSeq, kTypeValue, payload);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
     const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
 
@@ -623,7 +623,7 @@ TEST(ProtocolDecoderTests, CrcMismatchTakesPrecedenceOverInvalidHeaderFields) {
     auto raw = buildRawBuffer(0x02, 0xFF, kFlags, kReserved, kSeq, 0x99, payload);
     raw.back() ^= 0xFF;
 
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
     const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
 
@@ -639,7 +639,7 @@ TEST(ProtocolDecoderTests, DecodePreservesFlagsAndReservedBits) {
     constexpr uint8_t flags{ 0xFF };
     constexpr uint8_t reserved{ 0x7E };
     auto raw = buildRawBuffer(kVersion, kKindValue, flags, reserved, kSeq, kTypeValue, payload);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
     const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
 
@@ -657,7 +657,7 @@ TEST(ProtocolCodecDecoderTests, RoundTripSupportsBoundaryPayloadSizes) {
         const auto frame = makeFrame(payload);
         const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
         std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
-        std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+        std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(rawSize), 0xEE);
 
         const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
         ASSERT_TRUE(encoded.has_value()) << "payloadSize=" << payloadSize;
@@ -675,7 +675,7 @@ TEST(ProtocolCodecDecoderTests, RoundTripSupportsMaximumPayloadSize) {
     const auto frame = makeFrame(payload);
     const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
     std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(rawSize), 0xEE);
 
     const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
@@ -692,7 +692,7 @@ TEST(ProtocolCodecTests, EncodeRejectsPayloadLargerThanMaximum) {
     const auto frame = makeFrame(payload);
     const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
     std::vector<uint8_t> rawBuffer(rawSize, 0xEE);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(rawSize), 0xEE);
 
     const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
     EXPECT_FALSE(encoded.has_value());
@@ -702,7 +702,7 @@ TEST(ProtocolCodecTests, EncodeRejectsPayloadLargerThanMaximum) {
 TEST(ProtocolDecoderTests, DecodeRejectsPayloadLargerThanMaximum) {
     auto payload = buildPayload(FrameCodec::Max_Frame_Payload_Size + 1U);
     auto raw = buildRawBuffer(kVersion, kKindValue, kFlags, kReserved, kSeq, kTypeValue, payload);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
     const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
 
@@ -718,7 +718,7 @@ TEST(ProtocolCodecTests, EncodeAcceptsExactlyRequiredRawBufferAndRejectsOneByteL
     const auto frame = makeFrame(payload);
     const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
     std::vector<uint8_t> exactRawBuffer(rawSize, 0xEE);
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(rawSize), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(rawSize), 0xEE);
 
     const auto encoded = ProtocolCodec::encode(frame, exactRawBuffer, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
@@ -734,7 +734,7 @@ TEST(ProtocolDecoderTests, DecodeSupportsMinimumFrameWithEmptyPayload) {
     auto raw = buildRawBuffer(kVersion, kKindValue, kFlags, kReserved, kSeq, kTypeValue, payload);
     ASSERT_EQ(raw.size(), Frame::Header_Size + Frame::CRC_Size);
 
-    std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+    std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
     const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
     ASSERT_TRUE(encoded.has_value());
 
@@ -753,7 +753,7 @@ TEST(ProtocolDecoderTests, DecodeRejectsEverySingleByteRawMutationWithCrcMismatc
         auto raw = cleanRaw;
         raw[mutatedIndex] ^= 0x01;
 
-        std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+        std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
         const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
         ASSERT_TRUE(encoded.has_value()) << "mutatedIndex=" << mutatedIndex;
 
@@ -784,16 +784,20 @@ TEST(CobsrCodecDecoderTests, DeterministicFuzzRoundTripsShortLongAndZeroHeavyInp
     for (const auto inputSize : inputSizes) {
         for (const bool zeroHeavy : std::array<bool, 2>{ false, true }) {
             const auto raw = buildPatternPayload(inputSize, static_cast<uint32_t>(0xC0FFEEU + inputSize), zeroHeavy);
-            std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+            std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
 
             const auto encoded = CobsrCodec::addCOBSR(raw, encodedBuffer);
-            ASSERT_TRUE(encoded.has_value()) << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
             if (inputSize == 0U) {
-                EXPECT_EQ(encoded.value().size(), 0U) << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+                ASSERT_FALSE(encoded.has_value()) << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+                EXPECT_EQ(encoded.error(), ProtocolErrors::EmptyInputBuffer)
+                    << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
                 continue;
             }
 
-            EXPECT_TRUE(std::none_of(encoded.value().begin(), encoded.value().end(), [](uint8_t value) {
+            ASSERT_TRUE(encoded.has_value()) << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+            ASSERT_EQ(encoded.value().back(), Frame::Frame_Delimiter)
+                << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
+            EXPECT_TRUE(std::none_of(encoded.value().begin(), encoded.value().end() - 1, [](uint8_t value) {
                 return value == 0x00;
             })) << "inputSize=" << inputSize << " zeroHeavy=" << zeroHeavy;
 
@@ -920,7 +924,7 @@ TEST(ProtocolDecoderTests, DecodeRejectsSemanticMutationsWithRecomputedCrc) {
                                   kSeq,
                                   mutationCase.type,
                                   mutatedPayload);
-        std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+        std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
         const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
         ASSERT_TRUE(encoded.has_value());
 
@@ -956,7 +960,7 @@ TEST(ProtocolDecoderTests, DecodeAcceptsEveryValidKindTypePairWithRecomputedCrc)
     for (const auto kind : validKinds) {
         for (const auto type : validTypes) {
             auto raw = buildRawBuffer(kVersion, kind, kFlags, kReserved, kSeq, type, payload);
-            std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+            std::vector<uint8_t> encodedBuffer(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
             const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
             ASSERT_TRUE(encoded.has_value()) << "kind=" << static_cast<int>(kind) << " type=" << static_cast<int>(type);
 

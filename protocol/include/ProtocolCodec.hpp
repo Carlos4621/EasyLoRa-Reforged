@@ -17,7 +17,6 @@ public:
     /// @param outputBuffer Buffer en el que se colocará el resultado
     /// @return std::expected con std::span que apunta al buffer con el resultado, ProtocolErrors en caso de error
     /// @warning frameByteBuffer y outputBuffer DEBEN ser de distintos buffers
-    /// @warning El agregado del delimitador 0x00 es responsabilidad del stream
     [[nodiscard]]
     static std::expected<std::span<uint8_t>, ProtocolErrors> encode(const Frame& frame, std::span<uint8_t> frameBytesBuffer,
         std::span<uint8_t> outputBuffer) noexcept;

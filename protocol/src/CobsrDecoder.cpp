@@ -14,8 +14,12 @@ std::expected<std::span<uint8_t>, ProtocolErrors> CobsrDecoder::decode(std::span
         return std::unexpected(ProtocolErrors::SameBufferError);
     }
    
-    const uint8_t* encodedPtr = inputBuffer.empty() ? outputBuffer.data() : inputBuffer.data();
-    const auto cobsrStatus{ cobsr_decode(outputBuffer.data(), outputBuffer.size(), encodedPtr, inputBuffer.size()) };
+    if (inputBuffer.back() != Frame::Frame_Delimiter) {
+        return std::unexpected(ProtocolErrors::COBSRInputBufferWithoutDelimiter);
+    }
+
+    const auto encodedSize{ inputBuffer.size() - sizeof(Frame::Frame_Delimiter) };
+    const auto cobsrStatus{ cobsr_decode(outputBuffer.data(), outputBuffer.size(), inputBuffer.data(), encodedSize) };
 
     if (cobsrStatus.status != COBSR_DECODE_OK) {
         return std::unexpected(ProtocolErrors::COBSRDecodeError);
