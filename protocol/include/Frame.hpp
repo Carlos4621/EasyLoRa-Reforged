@@ -29,6 +29,8 @@ struct Frame {
     static constexpr uint8_t CRC_Size{ 2 };
 
     static constexpr uint8_t Actual_Frame_Version{ 1 };
+
+    static constexpr uint8_t Frame_Delimiter{ 0x00 };
 };
 
 #endif // !FRAME_HEADER
