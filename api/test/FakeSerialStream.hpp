@@ -23,6 +23,8 @@ public:
         bool openCalled{ false };
         bool closeCalled{ false };
         bool cancelCalled{ false };
+        size_t closeCount{ 0 };
+        size_t cancelCount{ 0 };
         std::string openedPath;
         size_t setOptionCount{ 0 };
         std::optional<unsigned int> baudRate;
@@ -127,6 +129,7 @@ public:
 
     void cancel(boost::system::error_code& ec) {
         state_m->cancelCalled = true;
+        ++state_m->cancelCount;
         ec.clear();
 
         if (state_m->pendingRead != nullptr) {
@@ -139,6 +142,7 @@ public:
 
     void close(boost::system::error_code& ec) {
         state_m->closeCalled = true;
+        ++state_m->closeCount;
         ec.clear();
     }
 

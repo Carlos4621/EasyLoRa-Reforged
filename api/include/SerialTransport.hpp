@@ -107,6 +107,7 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     void doWrite();
     void handleWrite(boost::system::error_code ec, size_t bytesWritten);
 
+    void requestClose() noexcept;
     void closeOnStrand() noexcept;
 };
 
@@ -119,7 +120,7 @@ inline BasicSerialTransport<Stream>::BasicSerialTransport(boost::asio::io_contex
 template <class Stream>
 inline BasicSerialTransport<Stream>::~BasicSerialTransport() noexcept {
     if (state_m != nullptr) {
-        state_m->closeOnStrand();
+        state_m->requestClose();
     }
 }
 
@@ -181,14 +182,7 @@ inline void BasicSerialTransport<Stream>::State::open(std::string portPath, Seri
 
 template <class Stream>
 inline void BasicSerialTransport<Stream>::State::close() {
-    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
-
-    boost::asio::post(
-        strand,
-        [self] {
-            self->closeOnStrand();
-        }
-    );
+    requestClose();
 }
 
 template <class Stream>
@@ -333,6 +327,18 @@ inline void BasicSerialTransport<Stream>::State::handleWrite(boost::system::erro
 }
 
 template <class Stream>
+inline void BasicSerialTransport<Stream>::State::requestClose() noexcept {
+    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
+
+    boost::asio::post(
+        strand,
+        [self] {
+            self->closeOnStrand();
+        }
+    );
+}
+
+template <class Stream>
 inline void BasicSerialTransport<Stream>::State::closeOnStrand() noexcept {
     if (closing) {
         return;
@@ -346,6 +352,7 @@ inline void BasicSerialTransport<Stream>::State::closeOnStrand() noexcept {
     serial.close(ignored);
 }
 
+/// @brief Clase encargada de recibir y enviar datos asíncronamente mediante el puerto serial
 using SerialTransport = BasicSerialTransport<boost::asio::serial_port>;
 
 #endif // !SERIAL_TRANSPORT_HEADER
