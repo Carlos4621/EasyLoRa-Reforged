@@ -282,6 +282,14 @@ TEST(SerialTransportTests, CloseDoesNotStartQueuedWritesWhileCurrentWriteIsPendi
     EXPECT_TRUE(state->cancelCalled);
     EXPECT_TRUE(state->closeCalled);
     EXPECT_EQ(state->writes.size(), 1U);
+
+    state->completePendingWrite(boost::asio::error::operation_aborted);
+    drain(context);
+
+    transport.asyncWrite({ 0x03 });
+    drain(context);
+
+    EXPECT_EQ(state->writes.size(), 1U);
 }
 
 TEST(SerialTransportTests, ReadErrorsCallErrorHandler) {
@@ -394,6 +402,43 @@ TEST(SerialTransportTests, CloseCancelsAndClosesStream) {
 
     EXPECT_TRUE(state->cancelCalled);
     EXPECT_TRUE(state->closeCalled);
-    ASSERT_EQ(errors.size(), 1U);
-    EXPECT_EQ(errors.front(), boost::asio::error::operation_aborted);
+    EXPECT_TRUE(errors.empty());
+}
+
+TEST(SerialTransportTests, ClosePreventsLaterOpenAndWrite) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    TestTransport transport{ context };
+
+    transport.close();
+    transport.open("/dev/test-lora");
+    transport.asyncWrite({ 0x01 });
+    drain(context);
+
+    EXPECT_FALSE(state->openCalled);
+    EXPECT_TRUE(state->cancelCalled);
+    EXPECT_TRUE(state->closeCalled);
+    EXPECT_TRUE(state->writes.empty());
+}
+
+TEST(SerialTransportTests, DestructorCancelsAndClosesPendingReadWithoutReportingError) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    std::vector<boost::system::error_code> errors;
+
+    {
+        TestTransport transport{ context };
+        transport.setErrorHandler([&errors](boost::system::error_code ec) {
+            errors.push_back(ec);
+        });
+        transport.open("/dev/test-lora");
+        drain(context);
+        ASSERT_NE(state->pendingRead, nullptr);
+    }
+
+    drain(context);
+
+    EXPECT_TRUE(state->cancelCalled);
+    EXPECT_TRUE(state->closeCalled);
+    EXPECT_TRUE(errors.empty());
 }

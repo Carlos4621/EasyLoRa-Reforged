@@ -2,10 +2,14 @@
 #define SERIAL_TRANSPORT_HEADER
 
 #include "boost/asio.hpp"
-#include <string_view>
+#include <cstddef>
+#include <cstdint>
+#include <string>
 #include <functional>
 #include <vector>
 #include <deque>
+#include <memory>
+#include <utility>
 #include "Frame.hpp"
 
 /// @brief Configuraciones para el puerto serial abierto con BasicSerialTransport
@@ -37,6 +41,13 @@ public:
     /// @param context Contexto de I/O
     explicit BasicSerialTransport(boost::asio::io_context& context);
 
+    BasicSerialTransport(const BasicSerialTransport&) = delete;
+    BasicSerialTransport& operator=(const BasicSerialTransport&) = delete;
+    BasicSerialTransport(BasicSerialTransport&&) noexcept = default;
+    BasicSerialTransport& operator=(BasicSerialTransport&&) noexcept = default;
+
+    ~BasicSerialTransport() noexcept;
+
     /// @brief Abre el puerto seleccionas con las opciones dadas y empieza a escuchar
     /// @param portPath Dirección del puerto a abrir
     /// @param config Configuración a usar. Por defecto 9600 8N1
@@ -48,12 +59,12 @@ public:
     /// @brief Establece la función a la que se llamará con los datos cuando se reciba un frame completo
     /// @param handler Handler a colocar
     /// @note La función debe tener firma void(std::vector<uint8_t>)
-    void setFrameHandler(const FrameHandler& handler) noexcept;
+    void setFrameHandler(FrameHandler handler) noexcept;
 
     /// @brief Establece la función a la que se llamará con los datos cuando se produzca un error
     /// @param handler Handler a colocar
     /// @note La función debe tener firma void(boost::system::error_code)
-    void setErrorHandler(const ErrorHandler& handler) noexcept;
+    void setErrorHandler(ErrorHandler handler) noexcept;
 
     /// @brief Escribe asincrónicamente los bytes daos
     /// @param toWrite Bytes a escribir
@@ -61,155 +72,278 @@ public:
     void asyncWrite(std::vector<uint8_t> toWrite);
 
 private:
-    boost::asio::strand<boost::asio::io_context::executor_type> strand_m;
-    Stream serial_m;
+    struct State;
 
-    FrameHandler frameHandler_m{ nullptr };
-    ErrorHandler errorHandler_m{ nullptr };
+    std::shared_ptr<State> state_m;
+};
 
-    std::vector<uint8_t> rxBuffer_m;
-    std::deque<std::vector<uint8_t>> txDeque_m;
+template <class Stream>
+struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State> {
+    explicit State(boost::asio::io_context& context);
+
+    boost::asio::strand<boost::asio::io_context::executor_type> strand;
+
+    Stream serial;
+
+    std::vector<uint8_t> rxBuffer;
+    std::deque<std::vector<uint8_t>> txDeque;
+
+    FrameHandler frameHandler{ nullptr };
+    ErrorHandler errorHandler{ nullptr };
+    
+    bool closing{ false };
+
+    void open(std::string portPath, SerialConfig config = Default_Serial_Config);
+    void close();
+
+    void setFrameHandler(FrameHandler handler) noexcept;
+    void setErrorHandler(ErrorHandler handler) noexcept;
+
+    void asyncWrite(std::vector<uint8_t> toWrite);
 
     void startRead();
     void handleRead(boost::system::error_code ec, size_t bytesWritten);
 
     void doWrite();
     void handleWrite(boost::system::error_code ec, size_t bytesWritten);
+
+    void closeOnStrand() noexcept;
 };
 
 template <class Stream>
 inline BasicSerialTransport<Stream>::BasicSerialTransport(boost::asio::io_context &context) 
-    : strand_m{ context.get_executor() }
-    , serial_m{ context }
+    : state_m{ std::make_shared<State>(context) }
 {
 }
 
 template <class Stream>
+inline BasicSerialTransport<Stream>::~BasicSerialTransport() noexcept {
+    if (state_m != nullptr) {
+        state_m->closeOnStrand();
+    }
+}
+
+template <class Stream>
 inline void BasicSerialTransport<Stream>::open(std::string portPath, SerialConfig config) {
+    state_m->open(std::move(portPath), std::move(config));
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::close() {
+    state_m->close();
+}
+
+template<class Stream>
+inline void BasicSerialTransport<Stream>::setFrameHandler(FrameHandler handler) noexcept {
+    state_m->setFrameHandler(std::move(handler));
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::setErrorHandler(ErrorHandler handler) noexcept {
+    state_m->setErrorHandler(std::move(handler));
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::asyncWrite(std::vector<uint8_t> toWrite) {
+    state_m->asyncWrite(std::move(toWrite));
+}
+
+template <class Stream>
+inline BasicSerialTransport<Stream>::State::State(boost::asio::io_context &context)
+    : strand{ context.get_executor() }
+    , serial{ context }
+{
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::State::open(std::string portPath, SerialConfig config) {
+    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() }; 
+
     boost::asio::post(
-        strand_m,
-        [this, config = std::move(config), portPath = std::move(portPath)] {
-            serial_m.open(portPath.data());
+        strand,
+        [self, config = std::move(config), portPath = std::move(portPath)] {
+            if (self->closing) {
+                return;
+            }
 
-            serial_m.set_option(boost::asio::serial_port_base::baud_rate(config.baudRate));
-            serial_m.set_option(boost::asio::serial_port_base::character_size(config.characterSize));
-            serial_m.set_option(boost::asio::serial_port_base::parity(config.parityByte));
-            serial_m.set_option(boost::asio::serial_port_base::stop_bits(config.stopBits));
-            serial_m.set_option(boost::asio::serial_port_base::flow_control(config.flowControl));
+            self->serial.open(portPath.data());
 
-            startRead();
+            self->serial.set_option(boost::asio::serial_port_base::baud_rate(config.baudRate));
+            self->serial.set_option(boost::asio::serial_port_base::character_size(config.characterSize));
+            self->serial.set_option(boost::asio::serial_port_base::parity(config.parityByte));
+            self->serial.set_option(boost::asio::serial_port_base::stop_bits(config.stopBits));
+            self->serial.set_option(boost::asio::serial_port_base::flow_control(config.flowControl));
+
+            self->startRead();
         }
     );
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::close() {
+inline void BasicSerialTransport<Stream>::State::close() {
+    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
+
     boost::asio::post(
-        strand_m, 
-        [this] {
-            boost::system::error_code ignored;
-
-            serial_m.cancel(ignored);
-            serial_m.close(ignored);
-
-            txDeque_m.clear();
-            rxBuffer_m.clear();
-    });
-}
-
-template<class Stream>
-inline void BasicSerialTransport<Stream>::setFrameHandler(const FrameHandler & handler) noexcept {
-    frameHandler_m = handler;
+        strand,
+        [self] {
+            self->closeOnStrand();
+        }
+    );
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::setErrorHandler(const ErrorHandler &handler) noexcept {
-    errorHandler_m = handler;
+inline void BasicSerialTransport<Stream>::State::setFrameHandler(FrameHandler handler) noexcept {
+    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
+
+    boost::asio::post(
+        strand,
+        [self, handler = std::move(handler)] mutable {
+            if (self->closing) {
+                return;
+            }
+            
+            self->frameHandler = std::move(handler);
+        }
+    );
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::asyncWrite(std::vector<uint8_t> toWrite) {
-    boost::asio::post(
-        strand_m,
-        [this, toWrite = std::move(toWrite)] {
-            const bool idle{ txDeque_m.empty() };
+inline void BasicSerialTransport<Stream>::State::setErrorHandler(ErrorHandler handler) noexcept {
+    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
 
-            txDeque_m.emplace_back(std::move(toWrite));
+    boost::asio::post(
+        strand,
+        [self, handler = std::move(handler)] mutable {
+            if (self->closing) {
+                return;
+            }
+            
+            self->errorHandler = std::move(handler);
+        }
+    );
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::State::asyncWrite(std::vector<uint8_t> toWrite) {
+    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
+
+    boost::asio::post(
+        strand,
+        [self, toWrite = std::move(toWrite)] mutable {
+            if (self->closing) { 
+                return;
+            }
+
+            const bool idle{ self->txDeque.empty() };
+
+            self->txDeque.emplace_back(std::move(toWrite));
     
             if (idle) {
-                doWrite();
+                self->doWrite();
             }
         }
     );
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::startRead() {
+inline void BasicSerialTransport<Stream>::State::startRead() {
+    if (closing) {
+        return;
+    }
+
+    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
+
     boost::asio::async_read_until(
-        serial_m,
-        boost::asio::dynamic_buffer(rxBuffer_m),
+        serial,
+        boost::asio::dynamic_buffer(rxBuffer),
         Frame::Frame_Delimiter,
         boost::asio::bind_executor(
-            strand_m,
-            [this](boost::system::error_code ec, std::size_t n) {
-                handleRead(ec, n);
+            strand,
+            [self](auto ec, auto bytesRead) {
+                self->handleRead(ec, bytesRead);
             }
         )
     );
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::handleRead(boost::system::error_code ec, size_t bytesWritten) {
+inline void BasicSerialTransport<Stream>::State::handleRead(boost::system::error_code ec, size_t bytesWritten) {
+    if (closing) {
+        rxBuffer.clear();
+        return;
+    }
+
     if (ec.failed()) {
-        if (errorHandler_m != nullptr) {
-            errorHandler_m(ec);
+        if (errorHandler != nullptr) {
+            errorHandler(ec);
         }
         return;
     }
     
-    std::vector<uint8_t> package(rxBuffer_m.cbegin(), rxBuffer_m.cbegin() + bytesWritten);
+    std::vector<uint8_t> package(rxBuffer.cbegin(), rxBuffer.cbegin() + bytesWritten);
 
-    rxBuffer_m.erase(rxBuffer_m.cbegin(), rxBuffer_m.cbegin() + bytesWritten);
+    rxBuffer.erase(rxBuffer.cbegin(), rxBuffer.cbegin() + bytesWritten);
     
-    if (frameHandler_m != nullptr) {
-        frameHandler_m(std::move(package));
+    if (frameHandler != nullptr) {
+        frameHandler(std::move(package));
     }
 
     startRead();
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::doWrite() {
-    if(txDeque_m.empty()) {
+inline void BasicSerialTransport<Stream>::State::doWrite() {
+    if(closing || txDeque.empty()) {
         return;
     }
 
+    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
+
     boost::asio::async_write(
-        serial_m,
-        boost::asio::dynamic_buffer(txDeque_m.front()),
+        serial,
+        boost::asio::dynamic_buffer(txDeque.front()),
         boost::asio::bind_executor(
-            strand_m,
-            [this](boost::system::error_code ec, size_t bytesWritten) {
-                handleWrite(ec, bytesWritten);
+            strand,
+            [self](auto ec, auto bytesWritten) {
+                self->handleWrite(ec, bytesWritten);
             }
         )
     );
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::handleWrite(boost::system::error_code ec, size_t bytesWritten) {
+inline void BasicSerialTransport<Stream>::State::handleWrite(boost::system::error_code ec, size_t bytesWritten) {
+    if (closing) {
+        txDeque.clear();
+        return;
+    }
+    
     if (ec) {
-        if (errorHandler_m != nullptr) {
-            errorHandler_m(ec);
+        if (errorHandler != nullptr) {
+            errorHandler(ec);
         }
         return;
     }
 
-    txDeque_m.pop_front();
+    txDeque.pop_front();
 
-    if (!txDeque_m.empty()) {
+    if (!txDeque.empty()) {
         doWrite();
     }
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::State::closeOnStrand() noexcept {
+    if (closing) {
+        return;
+    }
+
+    closing = true;
+
+    boost::system::error_code ignored;
+
+    serial.cancel(ignored);
+    serial.close(ignored);
 }
 
 using SerialTransport = BasicSerialTransport<boost::asio::serial_port>;
