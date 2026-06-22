@@ -8,10 +8,10 @@ SerialTransport::SerialTransport(boost::asio::io_context &context)
 {
 }
 
-void SerialTransport::open(std::string_view portPath, const SerialConfig &config) {
+void SerialTransport::open(std::string portPath, SerialConfig config) {
     asio::post(
         strand_m,
-        [this, config, portPath] {
+        [this, config = std::move(config), portPath = std::move(portPath)] {
             serial_m.set_option(asio::serial_port_base::baud_rate(config.baudRate));
             serial_m.set_option(asio::serial_port_base::character_size(config.characterSize));
             serial_m.set_option(asio::serial_port_base::parity(config.parityByte));

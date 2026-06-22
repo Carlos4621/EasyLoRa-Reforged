@@ -17,7 +17,7 @@ struct SerialConfig {
     uint32_t characterSize;
 };
 
-/// @brief Configuración default del puerto serial
+/// @brief Configuración default del puerto serial (9600 8N1)
 static constexpr SerialConfig Default_Serial_Config{ 
     .baudRate = 9600, 
     .flowControl = boost::asio::serial_port_base::flow_control::type::none,
@@ -39,7 +39,7 @@ public:
     /// @brief Abre el puerto seleccionas con las opciones dadas y empieza a escuchar
     /// @param portPath Dirección del puerto a abrir
     /// @param config Configuración a usar. Por defecto 9600 8N1
-    void open(std::string_view portPath, const SerialConfig& config = Default_Serial_Config);
+    void open(std::string portPath, SerialConfig config = Default_Serial_Config);
 
     /// @brief Cancela todas las operaciones pendientes y limpia los buffers
     void close();
