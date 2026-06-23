@@ -344,6 +344,88 @@ TEST(SerialTransportTests, ReadErrorsCallErrorHandler) {
     EXPECT_EQ(errors.front(), boost::asio::error::operation_aborted);
 }
 
+TEST(SerialTransportTests, ReadErrorStopsTransportAndClearsPartialFrame) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    TestTransport transport{ context };
+    std::vector<std::vector<uint8_t>> receivedFrames;
+    std::vector<boost::system::error_code> errors;
+
+    transport.setFrameHandler([&receivedFrames](std::vector<uint8_t> package) {
+        receivedFrames.emplace_back(std::move(package));
+    });
+    transport.setErrorHandler([&errors](boost::system::error_code ec) {
+        errors.push_back(ec);
+    });
+    transport.open("/dev/test-lora");
+    drain(context);
+
+    state->feedIncoming({ 0xCA, 0xFE });
+    drain(context);
+    state->failNextRead(boost::asio::error::broken_pipe, { 0xBA, 0xBE });
+    drain(context);
+    state->feedIncoming({ Frame::Frame_Delimiter });
+    drain(context);
+
+    ASSERT_EQ(errors.size(), 1U);
+    EXPECT_EQ(errors.front(), boost::asio::error::broken_pipe);
+    EXPECT_TRUE(receivedFrames.empty());
+    EXPECT_TRUE(state->cancelCalled);
+    EXPECT_TRUE(state->closeCalled);
+    EXPECT_EQ(state->pendingRead, nullptr);
+}
+
+TEST(SerialTransportTests, OpenRestartsTransportAfterReadError) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    TestTransport transport{ context };
+    std::vector<std::vector<uint8_t>> receivedFrames;
+
+    transport.setFrameHandler([&receivedFrames](std::vector<uint8_t> package) {
+        receivedFrames.emplace_back(std::move(package));
+    });
+    transport.open("/dev/test-lora");
+    drain(context);
+
+    state->failNextRead(boost::asio::error::broken_pipe);
+    drain(context);
+
+    EXPECT_TRUE(state->closeCalled);
+    EXPECT_EQ(state->pendingRead, nullptr);
+
+    transport.open("/dev/test-lora");
+    drain(context);
+    state->feedIncoming(frame({ 0x42 }));
+    drain(context);
+
+    ASSERT_EQ(receivedFrames.size(), 1U);
+    EXPECT_EQ(receivedFrames.front(), frame({ 0x42 }));
+    EXPECT_NE(state->pendingRead, nullptr);
+}
+
+TEST(SerialTransportTests, ReadErrorDiscardsQueuedWrites) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    state->autoCompleteWrites = false;
+    TestTransport transport{ context };
+
+    transport.open("/dev/test-lora");
+    transport.asyncWrite({ 0x01 });
+    transport.asyncWrite({ 0x02 });
+    drain(context);
+
+    ASSERT_EQ(state->writes.size(), 1U);
+    ASSERT_NE(state->pendingWrite, nullptr);
+
+    state->failNextRead(boost::asio::error::broken_pipe);
+    drain(context);
+    state->completePendingWrite(boost::asio::error::operation_aborted);
+    drain(context);
+
+    EXPECT_TRUE(state->closeCalled);
+    EXPECT_EQ(state->writes.size(), 1U);
+}
+
 TEST(SerialTransportTests, AllowsMissingErrorHandler) {
     boost::asio::io_context context;
     const auto state = FakeSerialStream::prepareNextInstance();
@@ -374,6 +456,8 @@ TEST(SerialTransportTests, WriteErrorsCallErrorHandler) {
     ASSERT_EQ(errors.size(), 1U);
     EXPECT_EQ(errors.front(), boost::asio::error::broken_pipe);
     EXPECT_TRUE(state->writes.empty());
+    EXPECT_TRUE(state->cancelCalled);
+    EXPECT_TRUE(state->closeCalled);
 }
 
 TEST(SerialTransportTests, AllowsMissingErrorHandlerOnWriteError) {
@@ -386,6 +470,56 @@ TEST(SerialTransportTests, AllowsMissingErrorHandlerOnWriteError) {
 
     EXPECT_NO_THROW(drain(context));
     EXPECT_TRUE(state->writes.empty());
+}
+
+TEST(SerialTransportTests, WriteErrorStopsTransportAndDiscardsQueuedWrites) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    TestTransport transport{ context };
+    std::vector<boost::system::error_code> errors;
+
+    transport.setErrorHandler([&errors](boost::system::error_code ec) {
+        errors.push_back(ec);
+    });
+    state->failNextWrite(boost::asio::error::broken_pipe);
+    transport.asyncWrite({ 0x01 });
+    transport.asyncWrite({ 0x02, 0x03 });
+    drain(context);
+
+    ASSERT_EQ(errors.size(), 1U);
+    EXPECT_EQ(errors.front(), boost::asio::error::broken_pipe);
+    EXPECT_TRUE(state->writes.empty());
+    EXPECT_TRUE(state->closeCalled);
+}
+
+TEST(SerialTransportTests, OpenRestartsTransportAfterWriteError) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    TestTransport transport{ context };
+    std::vector<std::vector<uint8_t>> receivedFrames;
+
+    transport.setFrameHandler([&receivedFrames](std::vector<uint8_t> package) {
+        receivedFrames.emplace_back(std::move(package));
+    });
+    transport.open("/dev/test-lora");
+    drain(context);
+
+    state->failNextWrite(boost::asio::error::broken_pipe);
+    transport.asyncWrite({ 0x01 });
+    drain(context);
+
+    EXPECT_TRUE(state->closeCalled);
+
+    transport.open("/dev/test-lora");
+    drain(context);
+    transport.asyncWrite({ 0x02 });
+    state->feedIncoming(frame({ 0x42 }));
+    drain(context);
+
+    ASSERT_EQ(state->writes.size(), 1U);
+    EXPECT_EQ(state->writes.front(), (std::vector<uint8_t>{ 0x02 }));
+    ASSERT_EQ(receivedFrames.size(), 1U);
+    EXPECT_EQ(receivedFrames.front(), frame({ 0x42 }));
 }
 
 TEST(SerialTransportTests, CloseCancelsAndClosesStream) {

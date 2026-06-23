@@ -48,12 +48,13 @@ public:
 
     ~BasicSerialTransport() noexcept;
 
-    /// @brief Abre el puerto seleccionas con las opciones dadas y empieza a escuchar, llamando a FrameHandler en caso de frame recibido
+    /// @brief Abre el puerto seleccionado con las opciones dadas y empieza a escuchar, llamando a FrameHandler en caso de frame recibido
     /// @param portPath Dirección del puerto a abrir
     /// @param config Configuración a usar. Por defecto 9600 8N1
+    /// @note Reinicia el transporte después de un error de I/O.
     void open(std::string portPath, SerialConfig config = Default_Serial_Config);
 
-    /// @brief Cancela todas las operaciones pendientes y limpia los buffers
+    /// @brief Solicita un cierre y cancelación de procesos, estos serán realizados ASAP
     void close();
 
     /// @brief Establece la función a la que se llamará con los datos cuando se reciba un frame completo
@@ -69,7 +70,7 @@ public:
     /// @brief Escribe asincrónicamente los bytes dados
     /// @param toWrite Bytes a escribir
     /// @note Se usa un sistema de colas para situaciones donde el último mensaje no se ha enviado aún y se llama de nuevo a esta función
-    /// @note En caso de error de escritura se descarta el mensaje y sigue con el siguiente en la cola
+    /// @note Las escrituras se descartan si ocurre un error de I/O; se requiere open() para reiniciar el transporte.
     void asyncWrite(std::vector<uint8_t> toWrite);
 
 private:
@@ -93,6 +94,8 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     ErrorHandler errorHandler{ nullptr };
     
     bool closing{ false };
+    bool stopped{ false };
+    size_t generation{ 0 };
 
     void open(std::string portPath, SerialConfig config = Default_Serial_Config);
     void close();
@@ -103,10 +106,12 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     void asyncWrite(std::vector<uint8_t> toWrite);
 
     void startRead();
-    void handleRead(boost::system::error_code ec, size_t bytesRead);
+    void handleRead(boost::system::error_code ec, size_t bytesRead, size_t operationGeneration);
 
     void doWrite();
-    void handleWrite(boost::system::error_code ec, size_t bytesWritten);
+    void handleWrite(boost::system::error_code ec, size_t bytesWritten, size_t operationGeneration);
+
+    void stopAfterIoError() noexcept;
 
     void requestClose() noexcept;
     void closeOnStrand() noexcept;
@@ -168,6 +173,11 @@ inline void BasicSerialTransport<Stream>::State::open(std::string portPath, Seri
                 return;
             }
 
+            ++self->generation;
+            self->stopped = false;
+            self->rxBuffer.clear();
+            self->txDeque.clear();
+
             self->serial.open(portPath.data());
 
             self->serial.set_option(boost::asio::serial_port_base::baud_rate(config.baudRate));
@@ -225,7 +235,7 @@ inline void BasicSerialTransport<Stream>::State::asyncWrite(std::vector<uint8_t>
     boost::asio::post(
         strand,
         [self, toWrite = std::move(toWrite)] mutable {
-            if (self->closing) { 
+            if (self->closing || self->stopped) {
                 return;
             }
 
@@ -242,11 +252,12 @@ inline void BasicSerialTransport<Stream>::State::asyncWrite(std::vector<uint8_t>
 
 template <class Stream>
 inline void BasicSerialTransport<Stream>::State::startRead() {
-    if (closing) {
+    if (closing || stopped) {
         return;
     }
 
     auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
+    const auto operationGeneration{ generation };
 
     boost::asio::async_read_until(
         serial,
@@ -254,31 +265,37 @@ inline void BasicSerialTransport<Stream>::State::startRead() {
         Frame::Frame_Delimiter,
         boost::asio::bind_executor(
             strand,
-            [self](auto ec, auto bytesRead) {
-                self->handleRead(ec, bytesRead);
+            [self, operationGeneration](auto ec, auto bytesRead) {
+                self->handleRead(ec, bytesRead, operationGeneration);
             }
         )
     );
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::State::handleRead(boost::system::error_code ec, size_t bytesRead) {
-    if (closing) {
-        rxBuffer.clear();
+inline void BasicSerialTransport<Stream>::State::handleRead(
+    boost::system::error_code ec,
+    size_t bytesRead,
+    size_t operationGeneration
+) {
+    if (closing || stopped || operationGeneration != generation) {
         return;
     }
 
     if (ec) {
+        stopAfterIoError();
+
         if (errorHandler != nullptr) {
             errorHandler(ec);
         }
+
+        return;
     }
-    else {
-        std::vector<uint8_t> package(rxBuffer.cbegin(), rxBuffer.cbegin() + bytesRead);
-    
-        if (frameHandler != nullptr) {
-            frameHandler(std::move(package));
-        }
+
+    std::vector<uint8_t> package(rxBuffer.cbegin(), rxBuffer.cbegin() + bytesRead);
+
+    if (frameHandler != nullptr) {
+        frameHandler(std::move(package));
     }
 
     rxBuffer.erase(rxBuffer.cbegin(), rxBuffer.cbegin() + bytesRead);
@@ -288,35 +305,43 @@ inline void BasicSerialTransport<Stream>::State::handleRead(boost::system::error
 
 template <class Stream>
 inline void BasicSerialTransport<Stream>::State::doWrite() {
-    if(closing || txDeque.empty()) {
+    if(closing || stopped || txDeque.empty()) {
         return;
     }
 
     auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
+    const auto operationGeneration{ generation };
 
     boost::asio::async_write(
         serial,
         boost::asio::dynamic_buffer(txDeque.front()),
         boost::asio::bind_executor(
             strand,
-            [self](auto ec, auto bytesWritten) {
-                self->handleWrite(ec, bytesWritten);
+            [self, operationGeneration](auto ec, auto bytesWritten) {
+                self->handleWrite(ec, bytesWritten, operationGeneration);
             }
         )
     );
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::State::handleWrite(boost::system::error_code ec, size_t bytesWritten) {
-    if (closing) {
-        txDeque.clear();
+inline void BasicSerialTransport<Stream>::State::handleWrite(
+    boost::system::error_code ec,
+    size_t bytesWritten,
+    size_t operationGeneration
+) {
+    if (closing || stopped || operationGeneration != generation) {
         return;
     }
-    
+
     if (ec) {
+        stopAfterIoError();
+
         if (errorHandler != nullptr) {
             errorHandler(ec);
         }
+
+        return;
     }
 
     txDeque.pop_front();
@@ -324,6 +349,19 @@ inline void BasicSerialTransport<Stream>::State::handleWrite(boost::system::erro
     if (!txDeque.empty()) {
         doWrite();
     }
+
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::State::stopAfterIoError() noexcept {
+    stopped = true;
+    ++generation;
+    rxBuffer.clear();
+    txDeque.clear();
+
+    boost::system::error_code ignored;
+    serial.cancel(ignored);
+    serial.close(ignored);
 }
 
 template <class Stream>
@@ -345,6 +383,10 @@ inline void BasicSerialTransport<Stream>::State::closeOnStrand() noexcept {
     }
 
     closing = true;
+    stopped = true;
+    ++generation;
+    rxBuffer.clear();
+    txDeque.clear();
 
     boost::system::error_code ignored;
 

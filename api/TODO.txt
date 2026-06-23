@@ -4,56 +4,16 @@ TODOs de SerialTransport
 Decisiones de diseño
 --------------------
 
-- Decidir qué ocurre con datos enormes sin delimitador y/u overflow del buffer
-
-- Detener completamente los procesos en caso de un error irrecuperable como la desconexión del dispositivo y exigir un nuevo open 
-
-- Decidir qué debe ocurrir después de un error de escritura.
-  Opciones:
-  - Detener el transporte y requerir una nueva instancia.
-  - Descartar la escritura fallida y continuar con las escrituras en cola.
-  - Limpiar la cola, reportar el error y mantener vivas las lecturas.
-  Desición: Limpiar la escritura fallida y seguir con la cola
-
-- Decidir qué debe ocurrir después de un error de lectura con datos parciales
-  en buffer.
-  Opciones:
-  - Preservar los bytes parciales para una lectura posterior.
-  - Limpiar el buffer de recepción ante cualquier error de lectura.
-  - Tratar los errores de lectura como terminales y cerrar el transporte.
-  Desición: Limpiar el buffer de recepción eliminando los n bytes recibidos antes del error
-
-- Decidir si BasicSerialTransport debe soportar construcción/asignación por
-  movimiento.
-  El comportamiento actual permite movimiento y elimina copia. Si el movimiento
-  no es necesario, eliminar las operaciones de movimiento simplificaría las
-  garantías de ciclo de vida.
-  Desición: Realmente no creo necesario limitar que el usuario pueda mover el objeto
-
 - Definir explícitamente el contrato de threading.
   El diseño actual postea las solicitudes de cierre al strand y espera que el
   io_context corra para ejecutar el trabajo de cierre encolado. Documentar si
   los usuarios pueden destruir SerialTransport mientras otro hilo ejecuta el
   io_context, y qué se espera si el io_context ya está detenido.
-  Desición: Documentar que se garantiza el envío del último mensaje de cola antes del cierre y que el cierre completo solo se ejecuta
-  si el context sigue corriendo. Esto debe ir en un readme?
+  Desición: Documentar que se garantiza el envío del último mensaje de cola antes del cierre manual (no por error)
+    y que el cierre completo solo se ejecuta si el context sigue corriendo. Esto debe ir en un readme?
 
 Mejoras posibles
 ----------------
-
-- Agregar tests una vez que se elija la política de errores de escritura.
-  Cubrir escrituras en cola, escrituras después de una falla y si el transporte
-  permanece usable.
-
-- Agregar tests una vez que se elija la política de buffering ante errores de
-  lectura.
-  Cubrir frames parciales, limpieza/preservación de rxBuffer y errores de
-  lectura terminales vs recuperables.
-
-- Considerar renombrar los helpers internos de cierre.
-  Nombres como requestClose() y closeOnStrand() son precisos, pero un esquema
-  consistente con el estilo de Asio, como stop(), requestStop() y doClose(),
-  podría leerse mejor a largo plazo.
 
 - Considerar documentar que close() es asíncrono.
   close() solicita la cancelación/cierre en el strand; la finalización solo se

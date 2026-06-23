@@ -39,6 +39,7 @@ public:
         std::optional<boost::system::error_code> nextOpenError;
         std::optional<boost::system::error_code> nextSetOptionError;
         std::optional<boost::system::error_code> nextReadError;
+        std::vector<uint8_t> nextReadErrorBytes;
         std::optional<boost::system::error_code> nextWriteError;
         std::function<void()> pendingRead;
 
@@ -47,8 +48,9 @@ public:
             completePendingRead();
         }
 
-        void failNextRead(boost::system::error_code ec) {
+        void failNextRead(boost::system::error_code ec, std::vector<uint8_t> bytes = {}) {
             nextReadError = ec;
+            nextReadErrorBytes = std::move(bytes);
             completePendingRead();
         }
 
@@ -246,6 +248,19 @@ private:
         if (state_m->nextReadError.has_value()) {
             ec = *state_m->nextReadError;
             state_m->nextReadError.reset();
+            auto bytes{ std::move(state_m->nextReadErrorBytes) };
+            state_m->nextReadErrorBytes.clear();
+
+            for (auto it = boost::asio::buffer_sequence_begin(buffers);
+                 it != boost::asio::buffer_sequence_end(buffers) && bytesRead < bytes.size();
+                 ++it) {
+                auto* data{ static_cast<uint8_t*>(it->data()) };
+                const auto size{ it->size() };
+
+                for (size_t offset{ 0 }; offset < size && bytesRead < bytes.size(); ++offset) {
+                    data[offset] = bytes[bytesRead++];
+                }
+            }
         } else {
             for (auto it = boost::asio::buffer_sequence_begin(buffers);
                  it != boost::asio::buffer_sequence_end(buffers) && !state_m->incomingBytes.empty();
