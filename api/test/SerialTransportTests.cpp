@@ -357,34 +357,6 @@ TEST(SerialTransportTests, AllowsMissingErrorHandler) {
     EXPECT_NO_THROW(drain(context));
 }
 
-TEST(SerialTransportTests, StopsReadingAfterReadError) {
-    boost::asio::io_context context;
-    const auto state = FakeSerialStream::prepareNextInstance();
-    TestTransport transport{ context };
-    std::vector<std::vector<uint8_t>> receivedFrames;
-    std::vector<boost::system::error_code> errors;
-
-    transport.setFrameHandler([&receivedFrames](std::vector<uint8_t> package) {
-        receivedFrames.emplace_back(std::move(package));
-    });
-    transport.setErrorHandler([&errors](boost::system::error_code ec) {
-        errors.push_back(ec);
-    });
-
-    transport.open("/dev/test-lora");
-    drain(context);
-
-    state->failNextRead(boost::asio::error::operation_aborted);
-    drain(context);
-    ASSERT_EQ(errors.size(), 1U);
-    EXPECT_FALSE(state->pendingRead);
-
-    state->feedIncoming(frame({ 0x55 }));
-    drain(context);
-
-    EXPECT_TRUE(receivedFrames.empty());
-}
-
 TEST(SerialTransportTests, WriteErrorsCallErrorHandler) {
     boost::asio::io_context context;
     const auto state = FakeSerialStream::prepareNextInstance();

@@ -48,7 +48,7 @@ public:
 
     ~BasicSerialTransport() noexcept;
 
-    /// @brief Abre el puerto seleccionas con las opciones dadas y empieza a escuchar
+    /// @brief Abre el puerto seleccionas con las opciones dadas y empieza a escuchar, llamando a FrameHandler en caso de frame recibido
     /// @param portPath Dirección del puerto a abrir
     /// @param config Configuración a usar. Por defecto 9600 8N1
     void open(std::string portPath, SerialConfig config = Default_Serial_Config);
@@ -66,9 +66,10 @@ public:
     /// @note La función debe tener firma void(boost::system::error_code)
     void setErrorHandler(ErrorHandler handler) noexcept;
 
-    /// @brief Escribe asincrónicamente los bytes daos
+    /// @brief Escribe asincrónicamente los bytes dados
     /// @param toWrite Bytes a escribir
     /// @note Se usa un sistema de colas para situaciones donde el último mensaje no se ha enviado aún y se llama de nuevo a esta función
+    /// @note En caso de error de escritura se descarta el mensaje y sigue con el siguiente en la cola
     void asyncWrite(std::vector<uint8_t> toWrite);
 
 private:
@@ -102,7 +103,7 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     void asyncWrite(std::vector<uint8_t> toWrite);
 
     void startRead();
-    void handleRead(boost::system::error_code ec, size_t bytesWritten);
+    void handleRead(boost::system::error_code ec, size_t bytesRead);
 
     void doWrite();
     void handleWrite(boost::system::error_code ec, size_t bytesWritten);
@@ -261,26 +262,26 @@ inline void BasicSerialTransport<Stream>::State::startRead() {
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::State::handleRead(boost::system::error_code ec, size_t bytesWritten) {
+inline void BasicSerialTransport<Stream>::State::handleRead(boost::system::error_code ec, size_t bytesRead) {
     if (closing) {
         rxBuffer.clear();
         return;
     }
 
-    if (ec.failed()) {
+    if (ec) {
         if (errorHandler != nullptr) {
             errorHandler(ec);
         }
-        return;
     }
+    else {
+        std::vector<uint8_t> package(rxBuffer.cbegin(), rxBuffer.cbegin() + bytesRead);
     
-    std::vector<uint8_t> package(rxBuffer.cbegin(), rxBuffer.cbegin() + bytesWritten);
+        if (frameHandler != nullptr) {
+            frameHandler(std::move(package));
+        }
+    }
 
-    rxBuffer.erase(rxBuffer.cbegin(), rxBuffer.cbegin() + bytesWritten);
-    
-    if (frameHandler != nullptr) {
-        frameHandler(std::move(package));
-    }
+    rxBuffer.erase(rxBuffer.cbegin(), rxBuffer.cbegin() + bytesRead);
 
     startRead();
 }
@@ -316,7 +317,6 @@ inline void BasicSerialTransport<Stream>::State::handleWrite(boost::system::erro
         if (errorHandler != nullptr) {
             errorHandler(ec);
         }
-        return;
     }
 
     txDeque.pop_front();
