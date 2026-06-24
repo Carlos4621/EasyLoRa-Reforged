@@ -12,6 +12,12 @@
 #include <utility>
 #include "Frame.hpp"
 
+/// @brief Posibles estados del envío de mensajes
+enum class WriteStatus : uint8_t {
+    AddedToQueue,
+    MessageTooLong,
+};
+
 /// @brief Configuraciones para el puerto serial abierto con BasicSerialTransport
 struct SerialConfig {
     uint32_t baudRate;
@@ -21,6 +27,13 @@ struct SerialConfig {
     uint32_t characterSize;
 };
 
+/// @brief Configuraciones para los buffers usados con BasicSerialTransport
+struct BufferConfig {
+    size_t rxBufferMaxSize;
+    size_t txMaxElementsInQueue;
+    size_t txMaxSizePerElement;
+};
+
 /// @brief Configuración default del puerto serial (9600 8N1)
 static constexpr SerialConfig Default_Serial_Config{ 
     .baudRate = 9600, 
@@ -28,6 +41,13 @@ static constexpr SerialConfig Default_Serial_Config{
     .parityByte = boost::asio::serial_port_base::parity::type::none,
     .stopBits = boost::asio::serial_port::stop_bits::type::one,
     .characterSize = 8
+};
+
+/// @brief Configuración default de los buffers
+static constexpr BufferConfig Default_Buffer_Config {
+    .rxBufferMaxSize = 1024,
+    .txMaxElementsInQueue = 10,
+    .txMaxSizePerElement = 512
 };
 
 /// @brief Clase encargada de recibir asíncronamente bytes y notificar al usuario para su posterior procesamiento
@@ -50,9 +70,10 @@ public:
 
     /// @brief Abre el puerto seleccionado con las opciones dadas y empieza a escuchar, llamando a FrameHandler en caso de frame recibido
     /// @param portPath Dirección del puerto a abrir
-    /// @param config Configuración a usar. Por defecto 9600 8N1
+    /// @param serialConfig Configuración del puerto serial a usar. Por defecto 9600 8N1
+    /// @param bufferConfig Configuración de los tamaños máximos de los buffers internos, por defecto rxBuffer = 1024, txInQueue = 10, txMaxSize = 512
     /// @note Reinicia el transporte después de un error de I/O.
-    void open(std::string portPath, SerialConfig config = Default_Serial_Config);
+    void open(std::string portPath, SerialConfig serialConfig = Default_Serial_Config, BufferConfig bufferConfig = Default_Buffer_Config);
 
     /// @brief Solicita un cierre y cancelación de procesos, estos serán realizados ASAP
     void close();
@@ -71,7 +92,8 @@ public:
     /// @param toWrite Bytes a escribir
     /// @note Se usa un sistema de colas para situaciones donde el último mensaje no se ha enviado aún y se llama de nuevo a esta función
     /// @note Las escrituras se descartan si ocurre un error de I/O; se requiere open() para reiniciar el transporte.
-    void asyncWrite(std::vector<uint8_t> toWrite);
+    [[nodiscard]]
+    WriteStatus asyncWrite(std::vector<uint8_t> toWrite);
 
 private:
     struct State;
@@ -87,6 +109,7 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
 
     Stream serial;
 
+    BufferConfig bufferConfig;
     std::vector<uint8_t> rxBuffer;
     std::deque<std::vector<uint8_t>> txDeque;
 
@@ -97,13 +120,14 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     bool stopped{ false };
     size_t generation{ 0 };
 
-    void open(std::string portPath, SerialConfig config = Default_Serial_Config);
+    void open(std::string portPath, SerialConfig serialConfig, BufferConfig bufferConfig);
     void close();
 
     void setFrameHandler(FrameHandler handler) noexcept;
     void setErrorHandler(ErrorHandler handler) noexcept;
 
-    void asyncWrite(std::vector<uint8_t> toWrite);
+    [[nodiscard]]
+    WriteStatus asyncWrite(std::vector<uint8_t> toWrite);
 
     void startRead();
     void handleRead(boost::system::error_code ec, size_t bytesRead, size_t operationGeneration);
@@ -131,8 +155,8 @@ inline BasicSerialTransport<Stream>::~BasicSerialTransport() noexcept {
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::open(std::string portPath, SerialConfig config) {
-    state_m->open(std::move(portPath), std::move(config));
+inline void BasicSerialTransport<Stream>::open(std::string portPath, SerialConfig serialConfig, BufferConfig bufferConfig) {
+    state_m->open(std::move(portPath), std::move(serialConfig), std::move(bufferConfig));
 }
 
 template <class Stream>
@@ -151,8 +175,8 @@ inline void BasicSerialTransport<Stream>::setErrorHandler(ErrorHandler handler) 
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::asyncWrite(std::vector<uint8_t> toWrite) {
-    state_m->asyncWrite(std::move(toWrite));
+inline WriteStatus BasicSerialTransport<Stream>::asyncWrite(std::vector<uint8_t> toWrite) {
+    return state_m->asyncWrite(std::move(toWrite));
 }
 
 template <class Stream>
@@ -163,12 +187,12 @@ inline BasicSerialTransport<Stream>::State::State(boost::asio::io_context &conte
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::State::open(std::string portPath, SerialConfig config) {
+inline void BasicSerialTransport<Stream>::State::open(std::string portPath, SerialConfig serialConfig, BufferConfig bufferConfig) {
     auto self{ BasicSerialTransport<Stream>::State::shared_from_this() }; 
 
     boost::asio::post(
         strand,
-        [self, config = std::move(config), portPath = std::move(portPath)] {
+        [self, serialConfig = std::move(serialConfig), portPath = std::move(portPath), bufferConfig = std::move(bufferConfig)] {
             if (self->closing) {
                 return;
             }
@@ -178,13 +202,17 @@ inline void BasicSerialTransport<Stream>::State::open(std::string portPath, Seri
             self->rxBuffer.clear();
             self->txDeque.clear();
 
+            self->bufferConfig = std::move(bufferConfig);
+
+            self->rxBuffer.reserve(bufferConfig.rxBufferMaxSize);
+
             self->serial.open(portPath.data());
 
-            self->serial.set_option(boost::asio::serial_port_base::baud_rate(config.baudRate));
-            self->serial.set_option(boost::asio::serial_port_base::character_size(config.characterSize));
-            self->serial.set_option(boost::asio::serial_port_base::parity(config.parityByte));
-            self->serial.set_option(boost::asio::serial_port_base::stop_bits(config.stopBits));
-            self->serial.set_option(boost::asio::serial_port_base::flow_control(config.flowControl));
+            self->serial.set_option(boost::asio::serial_port_base::baud_rate(serialConfig.baudRate));
+            self->serial.set_option(boost::asio::serial_port_base::character_size(serialConfig.characterSize));
+            self->serial.set_option(boost::asio::serial_port_base::parity(serialConfig.parityByte));
+            self->serial.set_option(boost::asio::serial_port_base::stop_bits(serialConfig.stopBits));
+            self->serial.set_option(boost::asio::serial_port_base::flow_control(serialConfig.flowControl));
 
             self->startRead();
         }
@@ -229,13 +257,22 @@ inline void BasicSerialTransport<Stream>::State::setErrorHandler(ErrorHandler ha
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::State::asyncWrite(std::vector<uint8_t> toWrite) {
+inline WriteStatus BasicSerialTransport<Stream>::State::asyncWrite(std::vector<uint8_t> toWrite) {
+    if (toWrite.size() > bufferConfig.txMaxSizePerElement) {
+        return WriteStatus::MessageTooLong;
+    }
+
     auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
 
     boost::asio::post(
         strand,
         [self, toWrite = std::move(toWrite)] mutable {
             if (self->closing || self->stopped) {
+                return;
+            }
+
+            if (self->txDeque.size() >= self->bufferConfig.txMaxElementsInQueue) {
+                errorHandler(boost::asio::error::no_buffer_space);
                 return;
             }
 
@@ -248,6 +285,8 @@ inline void BasicSerialTransport<Stream>::State::asyncWrite(std::vector<uint8_t>
             }
         }
     );
+
+    return WriteStatus::AddedToQueue;
 }
 
 template <class Stream>
@@ -261,7 +300,7 @@ inline void BasicSerialTransport<Stream>::State::startRead() {
 
     boost::asio::async_read_until(
         serial,
-        boost::asio::dynamic_buffer(rxBuffer),
+        boost::asio::dynamic_buffer(rxBuffer, bufferConfig.rxBufferMaxSize),
         Frame::Frame_Delimiter,
         boost::asio::bind_executor(
             strand,
@@ -273,11 +312,7 @@ inline void BasicSerialTransport<Stream>::State::startRead() {
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::State::handleRead(
-    boost::system::error_code ec,
-    size_t bytesRead,
-    size_t operationGeneration
-) {
+inline void BasicSerialTransport<Stream>::State::handleRead(boost::system::error_code ec, size_t bytesRead, size_t operationGeneration) {
     if (closing || stopped || operationGeneration != generation) {
         return;
     }

@@ -1,21 +1,136 @@
 TODOs de SerialTransport
 ========================
 
-Decisiones de diseño
---------------------
+Alcance y no objetivos
+----------------------
+
+- Mantener `SerialTransport` estrictamente orientado a puertos seriales que
+  comunican con el microcontrolador. No convertirlo en una abstracción común
+  para TCP, UDP u otros streams.
+
+- Mantenerlo ciego a la semántica del protocolo: no validar ni decodificar
+  COBS, CRC, tipos de mensaje, secuencias, ACKs ni reintentos de comandos.
+  Entrega paquetes delimitados en el orden recibido; las capas superiores
+  deciden si son válidos y qué hacer con ellos.
+
+
+Prioridad alta: seguridad y ciclo de vida
+-----------------------------------------
+
+- Limitar explícitamente la memoria de recepción.
+  `async_read_until` puede hacer crecer `rxBuffer` indefinidamente si el
+  microcontrolador deja de enviar el delimitador o si llegan datos corruptos.
+  Añadir `maxRxBufferBytes` y una política documentada al rebasarlo:
+  detener/cerrar el transporte y reportar un error específico. No intentar
+  buscar ni reparar un frame en esta capa.
+
+- Limitar la cola de transmisión y aplicar backpressure.
+  Definir máximos tanto de mensajes como de bytes en `txDeque`. `asyncWrite`
+  no debe consumir memoria sin límite cuando el microcontrolador está
+  desconectado, pausado o transmite más lento que el productor. Diseñar un
+  resultado o completion que informe si el mensaje fue aceptado, rechazado,
+  cancelado o escrito.
+
+- Formalizar una máquina de estados serial.
+  Modelar y exponer de forma inequívoca `closed`, `opening`, `open`, `faulted`
+  y `closing`. Definir qué hacen `open`, `close` y `asyncWrite` en cada estado,
+  especialmente llamadas repetidas a `open()` y un `open()` mientras el puerto
+  ya está activo. Evitar que errores de `serial.open()` o `set_option()` salgan
+  como excepciones desde el hilo que ejecuta el `io_context`.
+
+- Mantener separados el fallo de I/O y el cierre manual.
+  Los fallos de lectura/escritura deben cancelar, cerrar, limpiar buffers y
+  dejar el estado `faulted`, del que un nuevo `open()` puede salir. `close()`
+  manual debe ser idempotente y definitivo. Verificar que completions antiguas
+  no puedan afectar una sesión reabierta.
+
+- Decidir la semántica de cierre de salida.
+  La garantía actual pendiente de enviar el último mensaje contradice un cierre
+  que cancela el puerto. Ofrecer o elegir explícitamente `abort` (descarta
+  inmediatamente) frente a `drain` (termina la escritura actual/cola con un
+  límite temporal). Para comandos al microcontrolador, no ocultar nunca cuál
+  de ambas políticas se usó.
+
+- Informar el contexto de cada error.
+  Sustituir el `ErrorHandler(error_code)` ambiguo por un evento que incluya la
+  operación (`open`, configuración, lectura, escritura, cierre), el
+  `error_code`, la generación/sesión y si el transporte quedó reiniciable.
+  No clasificar ni recuperar errores de protocolo aquí.
+
+
+Prioridad alta: contrato de concurrencia y callbacks
+-----------------------------------------------------
 
 - Definir explícitamente el contrato de threading.
-  El diseño actual postea las solicitudes de cierre al strand y espera que el
-  io_context corra para ejecutar el trabajo de cierre encolado. Documentar si
-  los usuarios pueden destruir SerialTransport mientras otro hilo ejecuta el
-  io_context, y qué se espera si el io_context ya está detenido.
-  Desición: Documentar que se garantiza el envío del último mensaje de cola antes del cierre manual (no por error)
-    y que el cierre completo solo se ejecuta si el context sigue corriendo. Esto debe ir en un readme?
+  Documentar qué métodos son seguros desde varios hilos, en qué executor se
+  invocan callbacks, si se permite destruir el transporte mientras otro hilo
+  ejecuta el `io_context`, y qué ocurre si el contexto ya fue detenido.
 
-Mejoras posibles
-----------------
+- Definir reentrancia de callbacks.
+  Especificar si desde `FrameHandler`/`ErrorHandler` se permite llamar a
+  `open`, `close`, `asyncWrite` o reemplazar handlers. Garantizar orden de
+  eventos por sesión y que ningún callback se invoque después del cierre
+  definitivo.
 
-- Considerar documentar que close() es asíncrono.
-  close() solicita la cancelación/cierre en el strand; la finalización solo se
-  observa después de que el io_context procesa la operación posteada y las
-  completions asíncronas resultantes.
+- Contener excepciones lanzadas por callbacks de usuario.
+  Una excepción de un handler no debe deshacer el hilo de `io_context` ni dejar
+  el puerto en un estado indeterminado. Decidir entre capturarla, notificarla a
+  un hook de fallo y detener el transporte, o declarar handlers `noexcept`.
+
+- Documentar que `close()` es asíncrono.
+  Su finalización solo se observa cuando el `io_context` procesa el trabajo del
+  strand y las completions resultantes. Considerar una completion de cierre si
+  el usuario necesita saber cuándo el descriptor ya está cerrado.
+
+
+Prioridad media: operación serial y calidad diagnóstica
+--------------------------------------------------------
+
+- Completar la configuración específica de puerto serial.
+  Evaluar y documentar comportamiento de DTR/RTS, control de flujo, exclusión
+  del dispositivo, limpieza de buffers al abrir y diferencias Linux/Windows.
+  En particular, no cambiar DTR/RTS accidentalmente: algunos microcontroladores
+  se reinician con esas líneas.
+
+- Definir timeouts seriales sin interpretar el protocolo.
+  Considerar un watchdog opcional de inactividad de enlace y/o un límite de
+  tiempo de escritura para detectar un adaptador bloqueado. El timeout de la
+  respuesta a un comando sigue perteneciendo a la capa de protocolo.
+
+- Añadir métricas y trazado opcionales de bajo coste.
+  Exponer bytes/paquetes recibidos y enviados, errores por operación, máximo
+  de cola, máximo de buffer y transiciones de estado. Deben poder desactivarse
+  y nunca registrar el payload completo por defecto.
+
+- Separar el transporte de `Frame.hpp` sin ampliar el ámbito.
+  El delimitador puede vivir en una configuración mínima del transporte o en
+  una dependencia local más pequeña. Esto conserva la recepción por delimitador
+  de este protocolo serial, pero evita que el transporte conozca la estructura
+  o validación de un `Frame`.
+
+- Revisar asignaciones y copias por paquete.
+  Medir primero. Si el baud rate o el tamaño de paquetes lo justifican, usar
+  reserva acotada, pool de buffers o entrega con ownership explícito, sin
+  exponer buffers mutables ni alargar la vida de operaciones canceladas.
+
+
+Pruebas y verificación
+----------------------
+
+- Añadir pruebas unitarias de todos los límites y transiciones: buffer sin
+  delimitador, cola llena, error durante `open`/configuración, doble `open`,
+  `open` tras fallo, cierre `abort`/`drain`, completions canceladas tardías y
+  excepciones en handlers.
+
+- Añadir pruebas de estrés concurrente con varios productores de escritura y
+  varios hilos ejecutando el `io_context`. Ejecutarlas con AddressSanitizer,
+  UndefinedBehaviorSanitizer y ThreadSanitizer cuando sea viable.
+
+- Añadir integración con pseudo-terminales (PTY) y el `serial_port` real de
+  Asio. Verificar opciones de puerto, desconexión/reconexión simulada, datos
+  parciales, escritura lenta y cancelación; el fake stream no cubre todos los
+  detalles del sistema operativo.
+
+- Definir una prueba hardware-in-the-loop opcional con el microcontrolador
+  objetivo: ciclos de reset, desconexión USB, tasas máximas esperadas y sesiones
+  prolongadas. Estas pruebas validan el enlace físico, no COBS/CRC.
