@@ -9,12 +9,15 @@
 #include <vector>
 #include <deque>
 #include <memory>
+#include <atomic>
 #include <utility>
 #include "Frame.hpp"
 
 /// @brief Posibles estados del envío de mensajes
 enum class WriteStatus : uint8_t {
-    AddedToQueue,
+    Scheduled,
+    Closed,
+    QueueFull,
     MessageTooLong,
 };
 
@@ -109,7 +112,7 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
 
     Stream serial;
 
-    BufferConfig bufferConfig;
+    BufferConfig bufferConfig{ Default_Buffer_Config };
     std::vector<uint8_t> rxBuffer;
     std::deque<std::vector<uint8_t>> txDeque;
 
@@ -117,8 +120,9 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     ErrorHandler errorHandler{ nullptr };
     
     bool closing{ false };
-    bool stopped{ false };
+    bool stopped{ true };
     size_t generation{ 0 };
+    std::atomic<size_t> pendingWrites{ 0 };
 
     void open(std::string portPath, SerialConfig serialConfig, BufferConfig bufferConfig);
     void close();
@@ -201,6 +205,7 @@ inline void BasicSerialTransport<Stream>::State::open(std::string portPath, Seri
             self->stopped = false;
             self->rxBuffer.clear();
             self->txDeque.clear();
+            self->pendingWrites.store(0);
 
             self->bufferConfig = std::move(bufferConfig);
 
@@ -258,21 +263,32 @@ inline void BasicSerialTransport<Stream>::State::setErrorHandler(ErrorHandler ha
 
 template <class Stream>
 inline WriteStatus BasicSerialTransport<Stream>::State::asyncWrite(std::vector<uint8_t> toWrite) {
+    if (closing || stopped) {
+        return WriteStatus::Closed;
+    }
+
     if (toWrite.size() > bufferConfig.txMaxSizePerElement) {
         return WriteStatus::MessageTooLong;
     }
 
+    auto currentPendingWrites{ pendingWrites.load() };
+    while (true) {
+        if (currentPendingWrites >= bufferConfig.txMaxElementsInQueue) {
+            return WriteStatus::QueueFull;
+        }
+
+        if (pendingWrites.compare_exchange_weak(currentPendingWrites, currentPendingWrites + 1)) {
+            break;
+        }
+    }
+    
     auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
 
     boost::asio::post(
         strand,
         [self, toWrite = std::move(toWrite)] mutable {
             if (self->closing || self->stopped) {
-                return;
-            }
-
-            if (self->txDeque.size() >= self->bufferConfig.txMaxElementsInQueue) {
-                errorHandler(boost::asio::error::no_buffer_space);
+                self->pendingWrites.fetch_sub(1);
                 return;
             }
 
@@ -286,7 +302,7 @@ inline WriteStatus BasicSerialTransport<Stream>::State::asyncWrite(std::vector<u
         }
     );
 
-    return WriteStatus::AddedToQueue;
+    return WriteStatus::Scheduled;
 }
 
 template <class Stream>
@@ -369,6 +385,8 @@ inline void BasicSerialTransport<Stream>::State::handleWrite(
         return;
     }
 
+    pendingWrites.fetch_sub(1);
+
     if (ec) {
         stopAfterIoError();
 
@@ -384,7 +402,6 @@ inline void BasicSerialTransport<Stream>::State::handleWrite(
     if (!txDeque.empty()) {
         doWrite();
     }
-
 }
 
 template <class Stream>

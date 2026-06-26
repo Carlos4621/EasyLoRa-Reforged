@@ -235,13 +235,84 @@ TEST(SerialTransportTests, QueuesWritesInOrder) {
     const auto state = FakeSerialStream::prepareNextInstance();
     TestTransport transport{ context };
 
-    transport.asyncWrite({ 0x01, 0x02 });
-    transport.asyncWrite({ 0xA0, 0xB0, 0xC0 });
+    transport.open("/dev/test-lora");
+    drain(context);
+
+    EXPECT_EQ(transport.asyncWrite({ 0x01, 0x02 }), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0xA0, 0xB0, 0xC0 }), WriteStatus::Scheduled);
     drain(context);
 
     ASSERT_EQ(state->writes.size(), 2U);
     EXPECT_EQ(state->writes[0], (std::vector<uint8_t>{ 0x01, 0x02 }));
     EXPECT_EQ(state->writes[1], (std::vector<uint8_t>{ 0xA0, 0xB0, 0xC0 }));
+}
+
+TEST(SerialTransportTests, RejectsWritesBeforeOpenCompletes) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    TestTransport transport{ context };
+
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Closed);
+
+    transport.open("/dev/test-lora");
+    EXPECT_EQ(transport.asyncWrite({ 0x02 }), WriteStatus::Closed);
+    drain(context);
+
+    EXPECT_EQ(transport.asyncWrite({ 0x03 }), WriteStatus::Scheduled);
+    drain(context);
+
+    ASSERT_EQ(state->writes.size(), 1U);
+    EXPECT_EQ(state->writes.front(), (std::vector<uint8_t>{ 0x03 }));
+}
+
+TEST(SerialTransportTests, RejectsWritesLargerThanConfiguredLimit) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    TestTransport transport{ context };
+    const BufferConfig bufferConfig{
+        .rxBufferMaxSize = Default_Buffer_Config.rxBufferMaxSize,
+        .txMaxElementsInQueue = Default_Buffer_Config.txMaxElementsInQueue,
+        .txMaxSizePerElement = 2,
+    };
+
+    transport.open("/dev/test-lora", Default_Serial_Config, bufferConfig);
+    drain(context);
+
+    EXPECT_EQ(transport.asyncWrite({ 0x01, 0x02, 0x03 }), WriteStatus::MessageTooLong);
+    drain(context);
+
+    EXPECT_TRUE(state->writes.empty());
+}
+
+TEST(SerialTransportTests, RejectsWritesWhenQueueIsFull) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    state->autoCompleteWrites = false;
+    TestTransport transport{ context };
+    const BufferConfig bufferConfig{
+        .rxBufferMaxSize = Default_Buffer_Config.rxBufferMaxSize,
+        .txMaxElementsInQueue = 1,
+        .txMaxSizePerElement = Default_Buffer_Config.txMaxSizePerElement,
+    };
+
+    transport.open("/dev/test-lora", Default_Serial_Config, bufferConfig);
+    drain(context);
+
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0x02 }), WriteStatus::QueueFull);
+    drain(context);
+
+    ASSERT_EQ(state->writes.size(), 1U);
+    EXPECT_EQ(state->writes.front(), (std::vector<uint8_t>{ 0x01 }));
+
+    state->completePendingWrite();
+    drain(context);
+
+    EXPECT_EQ(transport.asyncWrite({ 0x03 }), WriteStatus::Scheduled);
+    drain(context);
+
+    ASSERT_EQ(state->writes.size(), 2U);
+    EXPECT_EQ(state->writes.back(), (std::vector<uint8_t>{ 0x03 }));
 }
 
 TEST(SerialTransportTests, DoesNotStartQueuedWriteUntilCurrentWriteCompletes) {
@@ -250,8 +321,11 @@ TEST(SerialTransportTests, DoesNotStartQueuedWriteUntilCurrentWriteCompletes) {
     state->autoCompleteWrites = false;
     TestTransport transport{ context };
 
-    transport.asyncWrite({ 0x01 });
-    transport.asyncWrite({ 0x02, 0x03 });
+    transport.open("/dev/test-lora");
+    drain(context);
+
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0x02, 0x03 }), WriteStatus::Scheduled);
     drain(context);
 
     ASSERT_EQ(state->writes.size(), 1U);
@@ -271,8 +345,11 @@ TEST(SerialTransportTests, CloseDoesNotStartQueuedWritesWhileCurrentWriteIsPendi
     state->autoCompleteWrites = false;
     TestTransport transport{ context };
 
-    transport.asyncWrite({ 0x01 });
-    transport.asyncWrite({ 0x02 });
+    transport.open("/dev/test-lora");
+    drain(context);
+
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0x02 }), WriteStatus::Scheduled);
     drain(context);
     ASSERT_EQ(state->writes.size(), 1U);
 
@@ -286,7 +363,7 @@ TEST(SerialTransportTests, CloseDoesNotStartQueuedWritesWhileCurrentWriteIsPendi
     state->completePendingWrite(boost::asio::error::operation_aborted);
     drain(context);
 
-    transport.asyncWrite({ 0x03 });
+    EXPECT_EQ(transport.asyncWrite({ 0x03 }), WriteStatus::Closed);
     drain(context);
 
     EXPECT_EQ(state->writes.size(), 1U);
@@ -303,8 +380,10 @@ TEST(SerialTransportTests, CloseCancelsReadAndPendingWriteTogether) {
         errors.push_back(ec);
     });
     transport.open("/dev/test-lora");
-    transport.asyncWrite({ 0x01 });
-    transport.asyncWrite({ 0x02 });
+    drain(context);
+
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0x02 }), WriteStatus::Scheduled);
     drain(context);
 
     ASSERT_NE(state->pendingRead, nullptr);
@@ -410,8 +489,10 @@ TEST(SerialTransportTests, ReadErrorDiscardsQueuedWrites) {
     TestTransport transport{ context };
 
     transport.open("/dev/test-lora");
-    transport.asyncWrite({ 0x01 });
-    transport.asyncWrite({ 0x02 });
+    drain(context);
+
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0x02 }), WriteStatus::Scheduled);
     drain(context);
 
     ASSERT_EQ(state->writes.size(), 1U);
@@ -449,8 +530,11 @@ TEST(SerialTransportTests, WriteErrorsCallErrorHandler) {
         errors.push_back(ec);
     });
 
+    transport.open("/dev/test-lora");
+    drain(context);
+
     state->failNextWrite(boost::asio::error::broken_pipe);
-    transport.asyncWrite({ 0x77 });
+    EXPECT_EQ(transport.asyncWrite({ 0x77 }), WriteStatus::Scheduled);
     drain(context);
 
     ASSERT_EQ(errors.size(), 1U);
@@ -465,8 +549,11 @@ TEST(SerialTransportTests, AllowsMissingErrorHandlerOnWriteError) {
     const auto state = FakeSerialStream::prepareNextInstance();
     TestTransport transport{ context };
 
+    transport.open("/dev/test-lora");
+    drain(context);
+
     state->failNextWrite(boost::asio::error::broken_pipe);
-    transport.asyncWrite({ 0x77 });
+    EXPECT_EQ(transport.asyncWrite({ 0x77 }), WriteStatus::Scheduled);
 
     EXPECT_NO_THROW(drain(context));
     EXPECT_TRUE(state->writes.empty());
@@ -481,9 +568,12 @@ TEST(SerialTransportTests, WriteErrorStopsTransportAndDiscardsQueuedWrites) {
     transport.setErrorHandler([&errors](boost::system::error_code ec) {
         errors.push_back(ec);
     });
+    transport.open("/dev/test-lora");
+    drain(context);
+
     state->failNextWrite(boost::asio::error::broken_pipe);
-    transport.asyncWrite({ 0x01 });
-    transport.asyncWrite({ 0x02, 0x03 });
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0x02, 0x03 }), WriteStatus::Scheduled);
     drain(context);
 
     ASSERT_EQ(errors.size(), 1U);
@@ -505,14 +595,14 @@ TEST(SerialTransportTests, OpenRestartsTransportAfterWriteError) {
     drain(context);
 
     state->failNextWrite(boost::asio::error::broken_pipe);
-    transport.asyncWrite({ 0x01 });
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Scheduled);
     drain(context);
 
     EXPECT_TRUE(state->closeCalled);
 
     transport.open("/dev/test-lora");
     drain(context);
-    transport.asyncWrite({ 0x02 });
+    EXPECT_EQ(transport.asyncWrite({ 0x02 }), WriteStatus::Scheduled);
     state->feedIncoming(frame({ 0x42 }));
     drain(context);
 
@@ -566,8 +656,10 @@ TEST(SerialTransportTests, ClosePreventsLaterOpenAndWrite) {
     TestTransport transport{ context };
 
     transport.close();
+    drain(context);
+
     transport.open("/dev/test-lora");
-    transport.asyncWrite({ 0x01 });
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Closed);
     drain(context);
 
     EXPECT_FALSE(state->openCalled);
