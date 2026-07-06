@@ -6,7 +6,7 @@ void Core_1::main() noexcept {
     while (true) {
         while (UART_0_Rx_FrameWaiter.tryReadFrame(&receivedFrameCodifiedBuffer_m[0], receivedFrameCodifiedBuffer_m.size(), bytesWritten_m) == ReadFrameStatus::OK) {
             const auto receivedFrame{ 
-                ProtocolDecoder::decode(std::span{receivedFrameCodifiedBuffer_m.cbegin(), bytesWritten_m}, receivedFrameBytes_m, receivedFramePayload_m) };
+                ProtocolDecoder::decode({ std::span{receivedFrameCodifiedBuffer_m.cbegin(), bytesWritten_m}, receivedFrameBytes_m, receivedFramePayload_m} ) };
 
             if (!receivedFrame.has_value()) {
                 continue; // TODO: Añadir log que indique error de decodificación

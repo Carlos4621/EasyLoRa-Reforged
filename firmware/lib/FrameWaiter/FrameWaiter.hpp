@@ -99,7 +99,7 @@ inline void FrameWaiter<BufferSize>::feed(uint8_t byte) noexcept {
 }
 
 template <size_t BufferSize>
-inline void FrameWaiter<BufferSize>::feed(std::span<uint8_t> range) noexcept {
+inline void FrameWaiter<BufferSize>::feed(std::span<const uint8_t> range) noexcept {
     for (const auto& i : range) {
         feed(i);
     }
