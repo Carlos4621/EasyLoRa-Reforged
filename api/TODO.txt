@@ -17,13 +17,7 @@ Alcance y no objetivos
 Prioridad alta: seguridad y ciclo de vida
 -----------------------------------------
 
-- Limitar explícitamente la memoria de recepción.
-  `async_read_until` puede hacer crecer `rxBuffer` indefinidamente si el
-  microcontrolador deja de enviar el delimitador o si llegan datos corruptos.
-  Añadir `maxRxBufferBytes` y una política documentada al rebasarlo:
-  detener/cerrar el transporte y reportar un error específico. No intentar
-  buscar ni reparar un frame en esta capa.
-
+// Revisar
 - Limitar la cola de transmisión y aplicar backpressure.
   Definir máximos tanto de mensajes como de bytes en `txDeque`. `asyncWrite`
   no debe consumir memoria sin límite cuando el microcontrolador está

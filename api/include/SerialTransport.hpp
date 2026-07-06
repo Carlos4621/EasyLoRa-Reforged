@@ -10,6 +10,7 @@
 #include <deque>
 #include <memory>
 #include <atomic>
+#include <array>
 #include <utility>
 #include "Frame.hpp"
 
@@ -19,6 +20,18 @@ enum class WriteStatus : uint8_t {
     Closed,
     QueueFull,
     MessageTooLong,
+};
+
+/// @brief Errores fatales que provocan el cierre del flujo de datos
+enum class FatalErrors : uint8_t {
+    UnpluggedDevice,
+    PermissionDenied,
+    ExternallyClosedPort,
+};
+
+/// @brief Errores que pueden ser manejados internamente
+enum class RecoverableErrors : uint8_t {
+    RxBufferFull,
 };
 
 /// @brief Configuraciones para el puerto serial abierto con BasicSerialTransport
@@ -58,7 +71,8 @@ template<class Stream>
 class BasicSerialTransport {
 public:
     using FrameHandler = std::function<void(std::vector<uint8_t>)>;
-    using ErrorHandler = std::function<void(boost::system::error_code)>;
+    using FatalErrorHandler = std::function<void(FatalErrors)>;
+    using RecuperableErrorHandler = std::function<void(RecoverableErrors)>;
 
     /// @brief Constructor base
     /// @param context Contexto de I/O
@@ -86,10 +100,15 @@ public:
     /// @note La función debe tener firma void(std::vector<uint8_t>)
     void setFrameHandler(FrameHandler handler) noexcept;
 
-    /// @brief Establece la función a la que se llamará con los datos cuando se produzca un error
+    /// @brief Establece la función a la que se llamará con los datos cuando se produzca un error fatal que requiera un nuevo open
     /// @param handler Handler a colocar
-    /// @note La función debe tener firma void(boost::system::error_code)
-    void setErrorHandler(ErrorHandler handler) noexcept;
+    /// @note La función debe tener firma void(FatalErrors)
+    void setFatalErrorHandler(FatalErrorHandler handler) noexcept;
+
+    /// @brief Establece la función a la que se llamaŕa con los datos cuando se produzca un error que puede ser manejado internamente
+    /// @param handler Handler a colocar
+    /// @note La función debe tener firma void(RecoverableErrors)
+    void setRecuperableErrorHandler(RecuperableErrorHandler handler) noexcept;
 
     /// @brief Escribe asincrónicamente los bytes dados
     /// @param toWrite Bytes a escribir
@@ -117,7 +136,8 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     std::deque<std::vector<uint8_t>> txDeque;
 
     FrameHandler frameHandler{ nullptr };
-    ErrorHandler errorHandler{ nullptr };
+    FatalErrorHandler fatalErrorHandler{ nullptr };
+    RecuperableErrorHandler recuperableErrorHandler{ nullptr };
     
     bool closing{ false };
     bool stopped{ true };
@@ -128,7 +148,8 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     void close();
 
     void setFrameHandler(FrameHandler handler) noexcept;
-    void setErrorHandler(ErrorHandler handler) noexcept;
+    void setFatalErrorHandler(FatalErrorHandler handler) noexcept;
+    void setRecuperableErrorHandler(RecuperableErrorHandler handler) noexcept;
 
     [[nodiscard]]
     WriteStatus asyncWrite(std::vector<uint8_t> toWrite);
@@ -143,6 +164,19 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
 
     void requestClose() noexcept;
     void closeOnStrand() noexcept;
+
+    void dispatchError(boost::system::error_code ec) noexcept;
+
+    [[nodiscard]]
+    bool isRecoverableError(boost::system::error_code ec) noexcept;
+
+    [[nodiscard]]
+    FatalErrors clarifyFatalError(boost::system::error_code ec);
+
+    [[nodiscard]]
+    RecoverableErrors clarifyRecoverableError(boost::system::error_code ec);
+
+    void recoverFromError(RecoverableErrors error);
 };
 
 template <class Stream>
@@ -174,8 +208,13 @@ inline void BasicSerialTransport<Stream>::setFrameHandler(FrameHandler handler) 
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::setErrorHandler(ErrorHandler handler) noexcept {
-    state_m->setErrorHandler(std::move(handler));
+inline void BasicSerialTransport<Stream>::setFatalErrorHandler(FatalErrorHandler handler) noexcept {
+    state_m->setFatalErrorHandler(std::move(handler));
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::setRecuperableErrorHandler(RecuperableErrorHandler handler) noexcept {
+    state_m->setRecuperableErrorHandler(std::move(handler));
 }
 
 template <class Stream>
@@ -246,7 +285,7 @@ inline void BasicSerialTransport<Stream>::State::setFrameHandler(FrameHandler ha
 }
 
 template <class Stream>
-inline void BasicSerialTransport<Stream>::State::setErrorHandler(ErrorHandler handler) noexcept {
+inline void BasicSerialTransport<Stream>::State::setFatalErrorHandler(FatalErrorHandler handler) noexcept {
     auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
 
     boost::asio::post(
@@ -256,7 +295,23 @@ inline void BasicSerialTransport<Stream>::State::setErrorHandler(ErrorHandler ha
                 return;
             }
             
-            self->errorHandler = std::move(handler);
+            self->fatalErrorHandler = std::move(handler);
+        }
+    );
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::State::setRecuperableErrorHandler(RecuperableErrorHandler handler) noexcept {
+    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
+
+    boost::asio::post(
+        strand,
+        [self, handler = std::move(handler)] mutable {
+            if(self->closing) {
+                return;
+            }
+
+            self->recuperableErrorHandler = std::move(handler);
         }
     );
 }
@@ -334,12 +389,7 @@ inline void BasicSerialTransport<Stream>::State::handleRead(boost::system::error
     }
 
     if (ec) {
-        stopAfterIoError();
-
-        if (errorHandler != nullptr) {
-            errorHandler(ec);
-        }
-
+        dispatchError(ec);
         return;
     }
 
@@ -388,12 +438,7 @@ inline void BasicSerialTransport<Stream>::State::handleWrite(
     pendingWrites.fetch_sub(1);
 
     if (ec) {
-        stopAfterIoError();
-
-        if (errorHandler != nullptr) {
-            errorHandler(ec);
-        }
-
+        dispatchError(ec);
         return;
     }
 
@@ -444,6 +489,70 @@ inline void BasicSerialTransport<Stream>::State::closeOnStrand() noexcept {
 
     serial.cancel(ignored);
     serial.close(ignored);
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::State::dispatchError(boost::system::error_code ec) noexcept {
+    if (isRecoverableError(ec)) {
+        const auto clarifiedError{ clarifyRecoverableError(ec) };
+
+        recoverFromError(clarifiedError);
+
+        if (recuperableErrorHandler != nullptr) {
+            recuperableErrorHandler(clarifiedError);
+        }
+    }
+    else {
+        stopAfterIoError();
+
+        if (fatalErrorHandler != nullptr) {
+            fatalErrorHandler(clarifyFatalError(ec));
+        }
+    }
+}
+
+template <class Stream>
+inline bool BasicSerialTransport<Stream>::State::isRecoverableError(boost::system::error_code ec) noexcept {
+    if (ec == boost::asio::error::not_found) {
+        return true;
+    }
+
+    return false;
+}
+
+template <class Stream>
+inline FatalErrors BasicSerialTransport<Stream>::State::clarifyFatalError(boost::system::error_code ec) {
+    using namespace boost::asio::error;
+    using enum std::errc;
+
+    if (ec == eof) {
+        return FatalErrors::UnpluggedDevice;
+    }
+
+    if (ec == bad_file_descriptor || ec == bad_descriptor || ec == no_such_device) {
+        return FatalErrors::ExternallyClosedPort;
+    }
+
+    if (ec == permission_denied) {
+        return FatalErrors::PermissionDenied;
+    }
+
+    throw std::invalid_argument{ "Function called with a non-fatal error" };
+}
+
+template <class Stream>
+inline RecoverableErrors BasicSerialTransport<Stream>::State::clarifyRecoverableError(boost::system::error_code ec) {
+    if (ec == boost::asio::error::not_found) {
+        return RecoverableErrors::RxBufferFull;
+    }
+
+    throw std::invalid_argument{ "Function called with a fatal error" };
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::State::recoverFromError(RecoverableErrors error) {
+    rxBuffer.clear();
+    startRead();
 }
 
 /// @brief Clase encargada de recibir y enviar datos asíncronamente mediante el puerto serial
