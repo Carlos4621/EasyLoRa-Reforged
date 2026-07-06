@@ -29,7 +29,7 @@ En decode, la validacion de CRC ocurre antes de confiar en los campos del header
 COBSR(version | kind | flags | reserved | seq_hi | seq_lo | type | payload | crc_hi | crc_lo) | 0x00
 ```
 
-`ProtocolDecoder` espera recibir el frame COBS/R con su delimitador final `0x00`. Si una capa de stream separa frames consecutivos al encontrar ese byte, debe conservarlo en el span que entrega al decoder.
+El delimitador final `0x00` pertenece al resultado de `ProtocolCodec::encode`; la capa de transporte no debe agregar otro delimitador al frame ya codificado. `ProtocolDecoder` espera recibir el frame COBS/R con ese delimitador final. Si una capa de stream separa frames consecutivos al encontrar `0x00`, debe conservar ese byte en el span que entrega al decoder.
 
 ## Buffers y lifetime
 
@@ -60,7 +60,7 @@ En decode:
 | `InvalidPackageKind` | frame/protocol encode/decode | `kind` no corresponde a ningun valor de `PackageKind`. |
 | `InvalidMessageType` | frame/protocol encode/decode | `type` no corresponde a ningun valor de `MessageType`. |
 | `COBSREncodeError` | COBS/R encode | La libreria COBS/R rechazo la codificacion. |
-| `COBSRDecodeError` | COBS/R decode | El input COBS/R es invalido, por ejemplo contiene `0x00`. |
+| `COBSRDecodeError` | COBS/R decode | El input COBS/R es invalido, por ejemplo contiene `0x00` antes del delimitador final. |
 | `SameBufferError` | encode/decode | Dos buffers se solapan en una operacion donde el solapamiento no es seguro. |
 | `EmptyInputBuffer` | COBS/R decode | Se intento decodificar un input vacio. |
 | `IncoherentFrame` | reservado | Error reservado para contratos de frame incoherentes. |

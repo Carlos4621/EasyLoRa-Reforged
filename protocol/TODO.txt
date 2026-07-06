@@ -16,30 +16,19 @@ Notas:
 ## P0 - Posibles errores o contratos confusos
 
 - [ ] Definir la politica real de `flags` y `reserved`.
-  - Ahora se preservan y hay test para eso.
+  - Ahora se preservan y hay tests con matriz de valores para eso.
   - Falta decidir si bits desconocidos deben aceptarse siempre, rechazarse, o reservarse por version de protocolo.
   - Tests sugeridos despues de decidir la politica:
-    - Si se preservan: matriz de valores para `flags` y `reserved`.
     - Si se rechazan: errores especificos para bits no permitidos.
 
 ## P1 - Tests nuevos recomendados
 
 - [ ] Tests de `NanopbCompatibilityTests` para mas mensajes reales.
-  - Actualmente solo `DeviceInfo`.
+  - Actualmente solo existe `DeviceInfo`, ya cubierto con payload valido maximo, defaults y payload nanopb corrupto despues de decodificar frame correcto.
   - Cuando existan protos para configuracion o paquetes de radio, cubrir:
     - payload valido maximo.
     - campos opcionales/default.
     - payload nanopb corrupto despues de decodificar frame correcto.
-
-Nota: Se debe crear tests que hagan estas pruebas PERO no tocar el código de producción
-- [x] Test de transporte/stream separado para delimitador `0x00`.
-  - README deja claro que el delimitador no pertenece a `ProtocolCodec`.
-  - No meter esta responsabilidad en `ProtocolDecoder`.
-  - Crear una capa nueva tipo `StreamFrameReader`/`StreamFrameWriter` si se necesita separar frames consecutivos.
-  - Tests sugeridos:
-    - Dos frames consecutivos separados por `0x00`.
-    - Bytes parciales entre lecturas.
-    - Delimitador doble o frame vacio.
 
 ## P2 - API y diseno futuro
 

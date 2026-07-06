@@ -651,6 +651,36 @@ TEST(ProtocolDecoderTests, DecodePreservesFlagsAndReservedBits) {
     EXPECT_EQ(decoded.value().reserved, reserved);
 }
 
+TEST(ProtocolCodecDecoderTests, RoundTripPreservesFlagsAndReservedMatrix) {
+    auto payload = buildPayload(3);
+    const std::array<uint8_t, 6> values{ 0x00, 0x01, 0x7F, 0x80, 0xA5, 0xFF };
+
+    for (const auto flags : values) {
+        for (const auto reserved : values) {
+            auto frame = makeFrame(payload);
+            frame.flags = flags;
+            frame.reserved = reserved;
+            std::vector<uint8_t> rawBuffer(ProtocolCodec::minimumFrameBytesBufferSize(frame), 0xEE);
+            std::vector<uint8_t> encodedBuffer(ProtocolCodec::minimumOutputBufferSize(frame), 0xEE);
+
+            const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
+            ASSERT_TRUE(encoded.has_value()) << "flags=" << static_cast<int>(flags)
+                                             << " reserved=" << static_cast<int>(reserved);
+
+            std::vector<uint8_t> decodedRawBuffer(rawBuffer.size(), 0xEE);
+            std::vector<uint8_t> decodedPayload(payload.size(), 0xEE);
+            const auto decoded = ProtocolDecoder::decode({ encoded.value(), decodedRawBuffer, decodedPayload });
+            ASSERT_TRUE(decoded.has_value()) << "flags=" << static_cast<int>(flags)
+                                             << " reserved=" << static_cast<int>(reserved);
+            EXPECT_EQ(decoded.value().flags, flags) << "flags=" << static_cast<int>(flags)
+                                                    << " reserved=" << static_cast<int>(reserved);
+            EXPECT_EQ(decoded.value().reserved, reserved) << "flags=" << static_cast<int>(flags)
+                                                          << " reserved=" << static_cast<int>(reserved);
+            EXPECT_TRUE(std::equal(payload.begin(), payload.end(), decoded.value().payload.begin()));
+        }
+    }
+}
+
 TEST(ProtocolCodecDecoderTests, RoundTripSupportsBoundaryPayloadSizes) {
     for (const size_t payloadSize : std::array<size_t, 4>{ 0U, 1U, 255U, 256U }) {
         auto payload = buildPayload(payloadSize);

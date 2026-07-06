@@ -118,6 +118,28 @@ TEST(RawFrameCodecTests, EncodeWritesHeaderPayloadAndCrc) {
     EXPECT_EQ(output[bufferSize - 1], getLowByte(expectedCrc));
 }
 
+TEST(RawFrameCodecTests, EncodePreservesFlagsAndReservedMatrix) {
+    std::vector<uint8_t> payload{ 0x10, 0x20 };
+    const std::array<uint8_t, 6> values{ 0x00, 0x01, 0x7F, 0x80, 0xA5, 0xFF };
+
+    for (const auto flags : values) {
+        for (const auto reserved : values) {
+            auto frame = makeFrame(payload);
+            frame.flags = flags;
+            frame.reserved = reserved;
+
+            std::vector<uint8_t> output(Frame::Header_Size + payload.size() + Frame::CRC_Size, 0xEE);
+            const auto encoded = FrameCodec::encode(frame, output);
+            ASSERT_TRUE(encoded.has_value()) << "flags=" << static_cast<int>(flags)
+                                             << " reserved=" << static_cast<int>(reserved);
+            EXPECT_EQ(encoded.value()[2], flags) << "flags=" << static_cast<int>(flags)
+                                                 << " reserved=" << static_cast<int>(reserved);
+            EXPECT_EQ(encoded.value()[3], reserved) << "flags=" << static_cast<int>(flags)
+                                                    << " reserved=" << static_cast<int>(reserved);
+        }
+    }
+}
+
 TEST(RawFrameCodecTests, EncodeSupportsEmptyPayload) {
     std::vector<uint8_t> payload{};
     const auto frame = makeFrame(payload);
@@ -324,6 +346,27 @@ TEST(RawFrameDecoderTests, DecodePopulatesFieldsAndPayload) {
     EXPECT_EQ(decodedFrame.seq, kSeq);
     EXPECT_EQ(decodedFrame.type, kType);
     EXPECT_EQ(decodedPayload, payload);
+}
+
+TEST(RawFrameDecoderTests, DecodePreservesFlagsAndReservedMatrix) {
+    std::vector<uint8_t> payload{ 0x10, 0x20 };
+    const std::array<uint8_t, 6> values{ 0x00, 0x01, 0x7F, 0x80, 0xA5, 0xFF };
+
+    for (const auto flags : values) {
+        for (const auto reserved : values) {
+            auto raw = buildRawBuffer(kVersion, kKindValue, flags, reserved, kSeq, kTypeValue, payload);
+            std::vector<uint8_t> decodedPayload(payload.size(), 0xEE);
+
+            const auto decoded = FrameDecoder::decode(raw, decodedPayload);
+            ASSERT_TRUE(decoded.has_value()) << "flags=" << static_cast<int>(flags)
+                                             << " reserved=" << static_cast<int>(reserved);
+            EXPECT_EQ(decoded.value().flags, flags) << "flags=" << static_cast<int>(flags)
+                                                    << " reserved=" << static_cast<int>(reserved);
+            EXPECT_EQ(decoded.value().reserved, reserved) << "flags=" << static_cast<int>(flags)
+                                                          << " reserved=" << static_cast<int>(reserved);
+            EXPECT_TRUE(std::equal(payload.begin(), payload.end(), decoded.value().payload.begin()));
+        }
+    }
 }
 
 TEST(RawFrameCodecDecoderTests, SeqRoundTripsBoundaryValues) {

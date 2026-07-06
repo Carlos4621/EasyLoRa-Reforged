@@ -2,6 +2,8 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -36,6 +38,12 @@ DeviceInfo_ makeDeviceInfoAtStringLimits() {
     return info;
 }
 
+DeviceInfo_ makeDeviceInfoAtEncodedLimits() {
+    auto info = makeDeviceInfoAtStringLimits();
+    info.protocol_version = std::numeric_limits<uint32_t>::max();
+    return info;
+}
+
 std::vector<uint8_t> encodeDeviceInfo(const DeviceInfo_& info) {
     std::vector<uint8_t> payload(DeviceInfo__size, 0x00);
     auto stream = pb_ostream_from_buffer(payload.data(), payload.size());
@@ -46,6 +54,33 @@ std::vector<uint8_t> encodeDeviceInfo(const DeviceInfo_& info) {
 
     payload.resize(stream.bytes_written);
     return payload;
+}
+
+Frame makeFrame(std::span<const uint8_t> payload);
+
+std::vector<uint8_t> encodeFramePayload(std::span<const uint8_t> payload) {
+    const auto frame = makeFrame(payload);
+    std::vector<uint8_t> rawBuffer(ProtocolCodec::minimumFrameBytesBufferSize(frame), 0xEE);
+    std::vector<uint8_t> encodedBuffer(ProtocolCodec::minimumOutputBufferSize(frame), 0xEE);
+
+    const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
+    if (!encoded.has_value()) {
+        return {};
+    }
+
+    return std::vector<uint8_t>(encoded.value().begin(), encoded.value().end());
+}
+
+std::optional<std::vector<uint8_t>> decodeFramePayload(std::span<const uint8_t> encodedFrame, size_t payloadSize) {
+    std::vector<uint8_t> decodedRawBuffer(ProtocolDecoder::minimumFrameBytesBufferSize(encodedFrame.size()), 0xEE);
+    std::vector<uint8_t> decodedPayload(payloadSize, 0xEE);
+
+    const auto decodedFrame = ProtocolDecoder::decode({ encodedFrame, decodedRawBuffer, decodedPayload });
+    if (!decodedFrame.has_value()) {
+        return std::nullopt;
+    }
+
+    return std::vector<uint8_t>(decodedFrame.value().payload.begin(), decodedFrame.value().payload.end());
 }
 
 Frame makeFrame(std::span<const uint8_t> payload) {
@@ -90,6 +125,60 @@ TEST(NanopbCompatibilityTests, DeviceInfoRoundTripsAsFramePayloadAtStringLimits)
     auto stream = pb_istream_from_buffer(decodedFrame.value().payload.data(), decodedFrame.value().payload.size());
     ASSERT_TRUE(pb_decode(&stream, DeviceInfo__fields, &actualInfo));
     expectDeviceInfoEquals(actualInfo, expectedInfo);
+}
+
+TEST(NanopbCompatibilityTests, DeviceInfoRoundTripsMaximumValidPayload) {
+    const auto expectedInfo = makeDeviceInfoAtEncodedLimits();
+    auto payload = encodeDeviceInfo(expectedInfo);
+    ASSERT_FALSE(payload.empty());
+    ASSERT_LE(payload.size(), DeviceInfo__size);
+
+    const auto encodedFrame = encodeFramePayload(payload);
+    ASSERT_FALSE(encodedFrame.empty());
+
+    const auto decodedPayload = decodeFramePayload(encodedFrame, payload.size());
+    ASSERT_TRUE(decodedPayload.has_value());
+    ASSERT_EQ(decodedPayload.value(), payload);
+
+    DeviceInfo_ actualInfo = DeviceInfo__init_zero;
+    auto stream = pb_istream_from_buffer(decodedPayload.value().data(), decodedPayload.value().size());
+    ASSERT_TRUE(pb_decode(&stream, DeviceInfo__fields, &actualInfo));
+    expectDeviceInfoEquals(actualInfo, expectedInfo);
+}
+
+TEST(NanopbCompatibilityTests, DeviceInfoDefaultsRoundTripFromEmptyPayload) {
+    std::vector<uint8_t> payload{};
+
+    const auto encodedFrame = encodeFramePayload(payload);
+    ASSERT_FALSE(encodedFrame.empty());
+
+    const auto decodedPayload = decodeFramePayload(encodedFrame, payload.size());
+    ASSERT_TRUE(decodedPayload.has_value());
+    ASSERT_TRUE(decodedPayload.value().empty());
+
+    DeviceInfo_ actualInfo = DeviceInfo__init_zero;
+    auto stream = pb_istream_from_buffer(decodedPayload.value().data(), decodedPayload.value().size());
+    ASSERT_TRUE(pb_decode(&stream, DeviceInfo__fields, &actualInfo));
+    EXPECT_STREQ(actualInfo.firmware_version, "");
+    EXPECT_EQ(actualInfo.protocol_version, 0U);
+    EXPECT_STREQ(actualInfo.device_name, "");
+    EXPECT_STREQ(actualInfo.hardware_revision, "");
+}
+
+TEST(NanopbCompatibilityTests, DeviceInfoCorruptNanopbPayloadFailsAfterFrameDecodeSucceeds) {
+    const std::array<uint8_t, 2> corruptPayload{ 0x0A, 0x01 };
+
+    const auto encodedFrame = encodeFramePayload(corruptPayload);
+    ASSERT_FALSE(encodedFrame.empty());
+
+    const auto decodedPayload = decodeFramePayload(encodedFrame, corruptPayload.size());
+    ASSERT_TRUE(decodedPayload.has_value());
+    ASSERT_EQ(decodedPayload.value().size(), corruptPayload.size());
+    ASSERT_TRUE(std::equal(corruptPayload.begin(), corruptPayload.end(), decodedPayload.value().begin()));
+
+    DeviceInfo_ actualInfo = DeviceInfo__init_zero;
+    auto stream = pb_istream_from_buffer(decodedPayload.value().data(), decodedPayload.value().size());
+    EXPECT_FALSE(pb_decode(&stream, DeviceInfo__fields, &actualInfo));
 }
 
 TEST(NanopbCompatibilityTests, DeviceInfoRejectsStringsWithoutNullTerminator) {
