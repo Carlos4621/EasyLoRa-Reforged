@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -251,20 +252,21 @@ TEST(SerialTransportTests, CallsWriteHandlerWhenWriteCompletes) {
     boost::asio::io_context context;
     const auto state = FakeSerialStream::prepareNextInstance();
     TestTransport transport{ context };
-    std::vector<WriteResult> writeResults;
+    std::vector<std::pair<WriteResult, size_t>> writeResults;
 
-    transport.setWriteHandler([&writeResults](WriteResult result) {
-        writeResults.push_back(result);
+    transport.setWriteHandler([&writeResults](WriteResult result, size_t packetID) {
+        writeResults.emplace_back(result, packetID);
     });
     transport.open("/dev/test-lora");
     drain(context);
 
-    EXPECT_EQ(transport.asyncWrite({ 0x01, 0x02 }), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0x01, 0x02 }, 42), WriteStatus::Scheduled);
     drain(context);
 
     ASSERT_EQ(state->writes.size(), 1U);
     ASSERT_EQ(writeResults.size(), 1U);
-    EXPECT_EQ(writeResults.front(), WriteResult::Written);
+    EXPECT_EQ(writeResults.front().first, WriteResult::Written);
+    EXPECT_EQ(writeResults.front().second, 42U);
 }
 
 TEST(SerialTransportTests, CallsWriteHandlerForQueuedWritesInCompletionOrder) {
@@ -272,16 +274,16 @@ TEST(SerialTransportTests, CallsWriteHandlerForQueuedWritesInCompletionOrder) {
     const auto state = FakeSerialStream::prepareNextInstance();
     state->autoCompleteWrites = false;
     TestTransport transport{ context };
-    std::vector<WriteResult> writeResults;
+    std::vector<std::pair<WriteResult, size_t>> writeResults;
 
-    transport.setWriteHandler([&writeResults](WriteResult result) {
-        writeResults.push_back(result);
+    transport.setWriteHandler([&writeResults](WriteResult result, size_t packetID) {
+        writeResults.emplace_back(result, packetID);
     });
     transport.open("/dev/test-lora");
     drain(context);
 
-    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Scheduled);
-    EXPECT_EQ(transport.asyncWrite({ 0x02 }), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }, 11), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0x02 }, 22), WriteStatus::Scheduled);
     drain(context);
 
     EXPECT_TRUE(writeResults.empty());
@@ -290,13 +292,36 @@ TEST(SerialTransportTests, CallsWriteHandlerForQueuedWritesInCompletionOrder) {
     drain(context);
 
     ASSERT_EQ(writeResults.size(), 1U);
-    EXPECT_EQ(writeResults[0], WriteResult::Written);
+    EXPECT_EQ(writeResults[0].first, WriteResult::Written);
+    EXPECT_EQ(writeResults[0].second, 11U);
 
     state->completePendingWrite();
     drain(context);
 
     ASSERT_EQ(writeResults.size(), 2U);
-    EXPECT_EQ(writeResults[1], WriteResult::Written);
+    EXPECT_EQ(writeResults[1].first, WriteResult::Written);
+    EXPECT_EQ(writeResults[1].second, 22U);
+}
+
+TEST(SerialTransportTests, CallsWriteHandlerWithDefaultPacketId) {
+    boost::asio::io_context context;
+    const auto state = FakeSerialStream::prepareNextInstance();
+    TestTransport transport{ context };
+    std::vector<std::pair<WriteResult, size_t>> writeResults;
+
+    transport.setWriteHandler([&writeResults](WriteResult result, size_t packetID) {
+        writeResults.emplace_back(result, packetID);
+    });
+    transport.open("/dev/test-lora");
+    drain(context);
+
+    EXPECT_EQ(transport.asyncWrite({ 0x01 }), WriteStatus::Scheduled);
+    drain(context);
+
+    ASSERT_EQ(state->writes.size(), 1U);
+    ASSERT_EQ(writeResults.size(), 1U);
+    EXPECT_EQ(writeResults.front().first, WriteResult::Written);
+    EXPECT_EQ(writeResults.front().second, static_cast<size_t>(-1));
 }
 
 TEST(SerialTransportTests, RejectsWritesBeforeOpenCompletes) {
@@ -639,26 +664,27 @@ TEST(SerialTransportTests, WriteErrorsCallFatalErrorHandler) {
     const auto state = FakeSerialStream::prepareNextInstance();
     TestTransport transport{ context };
     std::vector<FatalErrors> errors;
-    std::vector<WriteResult> writeResults;
+    std::vector<std::pair<WriteResult, size_t>> writeResults;
 
     transport.setFatalErrorHandler([&errors](FatalErrors error) {
         errors.push_back(error);
     });
-    transport.setWriteHandler([&writeResults](WriteResult result) {
-        writeResults.push_back(result);
+    transport.setWriteHandler([&writeResults](WriteResult result, size_t packetID) {
+        writeResults.emplace_back(result, packetID);
     });
 
     transport.open("/dev/test-lora");
     drain(context);
 
     state->failNextWrite(boost::asio::error::eof);
-    EXPECT_EQ(transport.asyncWrite({ 0x77 }), WriteStatus::Scheduled);
+    EXPECT_EQ(transport.asyncWrite({ 0x77 }, 77), WriteStatus::Scheduled);
     drain(context);
 
     ASSERT_EQ(errors.size(), 1U);
     EXPECT_EQ(errors.front(), FatalErrors::UnpluggedDevice);
     ASSERT_EQ(writeResults.size(), 1U);
-    EXPECT_EQ(writeResults.front(), WriteResult::Failed);
+    EXPECT_EQ(writeResults.front().first, WriteResult::Failed);
+    EXPECT_EQ(writeResults.front().second, 77U);
     EXPECT_TRUE(state->writes.empty());
     EXPECT_TRUE(state->cancelCalled);
     EXPECT_TRUE(state->closeCalled);

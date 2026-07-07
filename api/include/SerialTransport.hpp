@@ -22,6 +22,7 @@ enum class WriteStatus : uint8_t {
     MessageTooLong,
 };
 
+/// @brief Posibles resultados de escritura
 enum class WriteResult : uint8_t {
     Written,
     Failed,
@@ -78,7 +79,7 @@ public:
     using FrameHandler = std::function<void(std::vector<uint8_t>)>;
     using FatalErrorHandler = std::function<void(FatalErrors)>;
     using RecuperableErrorHandler = std::function<void(RecoverableErrors)>;
-    using WriteHandler = std::function<void(WriteResult)>;
+    using WriteHandler = std::function<void(WriteResult, size_t)>;
 
     /// @brief Constructor base
     /// @param context Contexto de I/O
@@ -118,15 +119,17 @@ public:
 
     /// @brief Establece la función que se llamará después de escribir un frame o en caso de error
     /// @param handler Handler a colocar
-    /// @note La función debe tener firma void(WriteResult)
+    /// @note La función debe tener firma void(WriteResult, size_t)
     void setWriteHandler(WriteHandler handler) noexcept;
 
     /// @brief Escribe asincrónicamente los bytes dados
     /// @param toWrite Bytes a escribir
+    /// @param packetID Identificador con el que se referirá al paquete al llamar a WriteHandler. Por defecto std::numeric_limits<size_t>::max()
     /// @note Se usa un sistema de colas para situaciones donde el último mensaje no se ha enviado aún y se llama de nuevo a esta función
     /// @note Las escrituras se descartan si ocurre un error de I/O; se requiere open() para reiniciar el transporte.
+    /// @note En caso de éxito o error se notificará con el callback de WriteHandler
     [[nodiscard]]
-    WriteStatus asyncWrite(std::vector<uint8_t> toWrite);
+    WriteStatus asyncWrite(std::vector<uint8_t> toWrite, size_t packetID = std::numeric_limits<size_t>::max());
 
 private:
     struct State;
@@ -144,7 +147,7 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
 
     BufferConfig bufferConfig{ Default_Buffer_Config };
     std::vector<uint8_t> rxBuffer;
-    std::deque<std::vector<uint8_t>> txDeque;
+    std::deque<std::pair<std::vector<uint8_t>, size_t>> txDeque;
 
     FrameHandler frameHandler{ nullptr };
     FatalErrorHandler fatalErrorHandler{ nullptr };
@@ -165,7 +168,7 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     void setWriteHandler(WriteHandler handler) noexcept;
 
     [[nodiscard]]
-    WriteStatus asyncWrite(std::vector<uint8_t> toWrite);
+    WriteStatus asyncWrite(std::vector<uint8_t> toWrite, size_t packetID);
 
     void startRead();
     void handleRead(boost::system::error_code ec, size_t bytesRead, size_t operationGeneration);
@@ -236,8 +239,8 @@ inline void BasicSerialTransport<Stream>::setWriteHandler(WriteHandler handler) 
 }
 
 template <class Stream>
-inline WriteStatus BasicSerialTransport<Stream>::asyncWrite(std::vector<uint8_t> toWrite) {
-    return state_m->asyncWrite(std::move(toWrite));
+inline WriteStatus BasicSerialTransport<Stream>::asyncWrite(std::vector<uint8_t> toWrite, size_t packetID) {
+    return state_m->asyncWrite(std::move(toWrite), packetID);
 }
 
 template <class Stream>
@@ -351,7 +354,7 @@ inline void BasicSerialTransport<Stream>::State::setWriteHandler(WriteHandler ha
 }
 
 template <class Stream>
-inline WriteStatus BasicSerialTransport<Stream>::State::asyncWrite(std::vector<uint8_t> toWrite) {
+inline WriteStatus BasicSerialTransport<Stream>::State::asyncWrite(std::vector<uint8_t> toWrite, size_t packetID) {
     if (closing || stopped) {
         return WriteStatus::Closed;
     }
@@ -375,7 +378,7 @@ inline WriteStatus BasicSerialTransport<Stream>::State::asyncWrite(std::vector<u
 
     boost::asio::post(
         strand,
-        [self, toWrite = std::move(toWrite)] mutable {
+        [self, toWrite = std::move(toWrite), packetID] mutable {
             if (self->closing || self->stopped) {
                 self->pendingWrites.fetch_sub(1);
                 return;
@@ -383,7 +386,7 @@ inline WriteStatus BasicSerialTransport<Stream>::State::asyncWrite(std::vector<u
 
             const bool idle{ self->txDeque.empty() };
 
-            self->txDeque.emplace_back(std::move(toWrite));
+            self->txDeque.emplace_back(std::move(toWrite), packetID);
     
             if (idle) {
                 self->doWrite();
@@ -449,7 +452,7 @@ inline void BasicSerialTransport<Stream>::State::doWrite() {
 
     boost::asio::async_write(
         serial,
-        boost::asio::dynamic_buffer(txDeque.front()),
+        boost::asio::dynamic_buffer(txDeque.front().first),
         boost::asio::bind_executor(
             strand,
             [self, operationGeneration](auto ec, auto bytesWritten) {
@@ -473,18 +476,18 @@ inline void BasicSerialTransport<Stream>::State::handleWrite(
 
     if (ec) {
         if (writeHandler != nullptr) {
-            writeHandler(WriteResult::Failed);
+            writeHandler(WriteResult::Failed, txDeque.front().second);
         }
 
         dispatchError(ec);
         return;
     }
 
-    txDeque.pop_front();
-
     if (writeHandler != nullptr) {
-        writeHandler(WriteResult::Written);
+        writeHandler(WriteResult::Written, txDeque.front().second);
     }
+
+    txDeque.pop_front();
 
     if (!txDeque.empty()) {
         doWrite();
