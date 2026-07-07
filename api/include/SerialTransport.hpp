@@ -22,6 +22,11 @@ enum class WriteStatus : uint8_t {
     MessageTooLong,
 };
 
+enum class WriteResult : uint8_t {
+    Written,
+    Failed,
+};
+
 /// @brief Errores fatales que provocan el cierre del flujo de datos
 enum class FatalErrors : uint8_t {
     UnpluggedDevice,
@@ -73,6 +78,7 @@ public:
     using FrameHandler = std::function<void(std::vector<uint8_t>)>;
     using FatalErrorHandler = std::function<void(FatalErrors)>;
     using RecuperableErrorHandler = std::function<void(RecoverableErrors)>;
+    using WriteHandler = std::function<void(WriteResult)>;
 
     /// @brief Constructor base
     /// @param context Contexto de I/O
@@ -110,6 +116,11 @@ public:
     /// @note La función debe tener firma void(RecoverableErrors)
     void setRecuperableErrorHandler(RecuperableErrorHandler handler) noexcept;
 
+    /// @brief Establece la función que se llamará después de escribir un frame o en caso de error
+    /// @param handler Handler a colocar
+    /// @note La función debe tener firma void(WriteResult)
+    void setWriteHandler(WriteHandler handler) noexcept;
+
     /// @brief Escribe asincrónicamente los bytes dados
     /// @param toWrite Bytes a escribir
     /// @note Se usa un sistema de colas para situaciones donde el último mensaje no se ha enviado aún y se llama de nuevo a esta función
@@ -138,6 +149,7 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     FrameHandler frameHandler{ nullptr };
     FatalErrorHandler fatalErrorHandler{ nullptr };
     RecuperableErrorHandler recuperableErrorHandler{ nullptr };
+    WriteHandler writeHandler{ nullptr };
     
     bool closing{ false };
     bool stopped{ true };
@@ -150,6 +162,7 @@ struct BasicSerialTransport<Stream>::State : std::enable_shared_from_this<State>
     void setFrameHandler(FrameHandler handler) noexcept;
     void setFatalErrorHandler(FatalErrorHandler handler) noexcept;
     void setRecuperableErrorHandler(RecuperableErrorHandler handler) noexcept;
+    void setWriteHandler(WriteHandler handler) noexcept;
 
     [[nodiscard]]
     WriteStatus asyncWrite(std::vector<uint8_t> toWrite);
@@ -215,6 +228,11 @@ inline void BasicSerialTransport<Stream>::setFatalErrorHandler(FatalErrorHandler
 template <class Stream>
 inline void BasicSerialTransport<Stream>::setRecuperableErrorHandler(RecuperableErrorHandler handler) noexcept {
     state_m->setRecuperableErrorHandler(std::move(handler));
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::setWriteHandler(WriteHandler handler) noexcept {
+   state_m->setWriteHandler(std::move(handler));
 }
 
 template <class Stream>
@@ -312,6 +330,22 @@ inline void BasicSerialTransport<Stream>::State::setRecuperableErrorHandler(Recu
             }
 
             self->recuperableErrorHandler = std::move(handler);
+        }
+    );
+}
+
+template <class Stream>
+inline void BasicSerialTransport<Stream>::State::setWriteHandler(WriteHandler handler) noexcept {
+    auto self{ BasicSerialTransport<Stream>::State::shared_from_this() };
+
+    boost::asio::post(
+        strand,
+        [self, handler = std::move(handler)] mutable {
+            if(self->closing) {
+                return;
+            }
+
+            self->writeHandler = std::move(handler);
         }
     );
 }
@@ -438,11 +472,19 @@ inline void BasicSerialTransport<Stream>::State::handleWrite(
     pendingWrites.fetch_sub(1);
 
     if (ec) {
+        if (writeHandler != nullptr) {
+            writeHandler(WriteResult::Failed);
+        }
+
         dispatchError(ec);
         return;
     }
 
     txDeque.pop_front();
+
+    if (writeHandler != nullptr) {
+        writeHandler(WriteResult::Written);
+    }
 
     if (!txDeque.empty()) {
         doWrite();
