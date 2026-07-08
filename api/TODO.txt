@@ -17,13 +17,16 @@ Alcance y no objetivos
 Prioridad alta: seguridad y ciclo de vida
 -----------------------------------------
 
-// Revisar
+// En producción
 - Limitar la cola de transmisión y aplicar backpressure.
-  Definir máximos tanto de mensajes como de bytes en `txDeque`. `asyncWrite`
-  no debe consumir memoria sin límite cuando el microcontrolador está
-  desconectado, pausado o transmite más lento que el productor. Diseñar un
-  resultado o completion que informe si el mensaje fue aceptado, rechazado,
-  cancelado o escrito.
+  Ya existen límites por cantidad de mensajes (`txMaxElementsInQueue`) y por
+  tamaño de cada mensaje (`txMaxSizePerElement`), rechazo inmediato desde
+  `asyncWrite` y completion global con `WriteHandler(WriteResult, packetID)`.
+  Para cerrar este punto falta definir un máximo de bytes totales acumulados
+  en `txDeque`, por ejemplo `txMaxBytesInQueue`, y mantener el contador aun
+  cuando haya cierres, errores o reinicios de sesión. También falta decidir si
+  `WriteResult` debe distinguir cancelación/descarte explícito, por ejemplo
+  `Cancelled`, además de `Written` y `Failed`.
 
 - Formalizar una máquina de estados serial.
   Modelar y exponer de forma inequívoca `closed`, `opening`, `open`, `faulted`

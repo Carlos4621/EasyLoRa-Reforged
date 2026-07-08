@@ -1,0 +1,145 @@
+TODOs de mantenimiento de SerialTransport
+=========================================
+
+Objetivo
+--------
+
+- Reducir duplicacion, estados implicitos y caminos de error fragiles en
+  `SerialTransport`, sin ampliar su responsabilidad fuera del transporte serial
+  delimitado por frames.
+
+- Priorizar cambios que vuelvan el codigo mas seguro frente a completions
+  tardias, cierres manuales, errores fatales y futuras extensiones de la cola
+  de escritura.
+
+
+Prioridad alta: estado y ciclo de vida
+--------------------------------------
+
+- Introducir una maquina de estados explicita.
+  Reemplazar la combinacion implicita de `closing`, `stopped` y `generation`
+  por un estado claro, por ejemplo `Closed`, `Opening`, `Open`, `Faulted` y
+  `Closing`. Definir helpers como `canWrite()`, `canOpen()` o equivalentes
+  para evitar repetir condiciones en varios metodos.
+
+- Unificar cierre manual, fallo fatal y reinicio de sesion.
+  Extraer un helper comun, por ejemplo `stopTransport(StopReason reason)`, que
+  concentre limpieza de buffers, cancelacion, cierre del puerto, avance de
+  generacion, estado final y notificacion de escrituras pendientes. Distinguir
+  semanticamente `ManualClose`, `FatalIoError` y `Reopen`.
+
+- Separar la escritura activa de la cola pendiente.
+  La operacion actualmente en `async_write` debe tener identidad propia aunque
+  la cola se limpie por cierre o error. Considerar `activeWrite` separado de
+  `pendingWritesQueue` para poder notificar correctamente completions tardias y
+  cancelaciones sin depender de `txDeque.front()`.
+
+- Definir semantica de cancelacion de escrituras.
+  Decidir exactamente cuando se notifica `WriteResult::Cancelled`: cierre
+  manual, fallo fatal, reapertura de sesion, write aceptado pero no encolado por
+  cierre tardio, cola descartada o completion antigua. Documentar y cubrir con
+  pruebas cada caso elegido.
+
+
+Prioridad alta: cola de escritura
+---------------------------------
+
+- Reemplazar `std::pair` por un tipo con nombre.
+  Crear un `struct PendingWrite` con al menos `std::vector<uint8_t> bytes` y
+  `size_t packetId`. Esto evita `.first`/`.second`, mejora legibilidad y deja
+  espacio para metadatos futuros como bytes acumulados, timestamps o callback
+  por mensaje.
+
+- Preparar limite por bytes totales en cola.
+  Extender el modelo de cola para soportar un futuro `txMaxBytesInQueue`.
+  Mantener el contador consistente al aceptar, completar, fallar, cancelar,
+  cerrar o reiniciar una sesion.
+
+- Revisar el significado de `pendingWrites`.
+  Confirmar si cuenta escrituras aceptadas, encoladas, activas o pendientes de
+  completion. Renombrar o dividir el contador si hace falta para que coincida
+  con el contrato de backpressure.
+
+
+Prioridad alta: callbacks y errores
+-----------------------------------
+
+- Centralizar notificaciones a callbacks.
+  Crear helpers como `notifyWrite`, `notifyFatal`, `notifyRecoverable` y, si
+  aplica, `notifyFrame`. Cada helper debe hacer el guard de handler nulo y
+  definir una politica consistente para excepciones de usuario.
+
+- Evitar `noexcept` cuando el camino puede lanzar.
+  Revisar funciones marcadas `noexcept`, especialmente las que llaman
+  clasificadores de errores o callbacks de usuario. O bien quitar `noexcept`,
+  o bien capturar todas las excepciones y definir una accion segura.
+
+- Hacer que la clasificacion de errores no dependa de excepciones internas.
+  `clarifyFatalError` y `clarifyRecoverableError` pueden devolver un valor
+  generico/desconocido o usar `std::optional`/`expected` local si aparece un
+  error no clasificado. Evitar que un error inesperado termine en
+  `std::terminate` desde un camino `noexcept`.
+
+
+Prioridad media: concurrencia y contrato publico
+------------------------------------------------
+
+- Definir el contrato de threading.
+  Decidir si los metodos publicos pueden llamarse desde varios hilos. Si si,
+  evitar lecturas directas fuera del strand de estado no atomico como
+  `closing`, `stopped` y `bufferConfig`. Si no, documentarlo explicitamente.
+
+- Revisar `asyncWrite` frente al strand.
+  Actualmente parte de la decision se toma antes del `post` y parte dentro del
+  strand. Unificar la politica o documentar por que se mantiene ese diseno.
+  Evitar estados observados parcialmente cuando `open`, `close` y `asyncWrite`
+  se intercalan.
+
+- Definir reentrancia de callbacks.
+  Especificar si desde `FrameHandler`, `FatalErrorHandler`,
+  `RecuperableErrorHandler` o `WriteHandler` se permite llamar a `open`,
+  `close`, `asyncWrite` o reemplazar handlers. Garantizar que no se rompa el
+  orden de eventos por sesion.
+
+
+Prioridad media: estructura y legibilidad
+-----------------------------------------
+
+- Extraer pasos de `open`.
+  Separar responsabilidades como `resetSession`, `openSerialPort`,
+  `applySerialConfig` y `startRead`. El objetivo es que `open` quede como una
+  secuencia legible y que los errores de configuracion sean mas faciles de
+  tratar.
+
+- Reducir duplicacion en setters de handlers.
+  Los setters actuales repiten el mismo patron de `post` al strand, check de
+  cierre y asignacion. Considerar un helper interno para asignar handlers en el
+  strand o aceptar la duplicacion solo si se mantiene pequena y clara.
+
+- Nombrar constantes especiales.
+  Reemplazar el uso directo de `std::numeric_limits<size_t>::max()` como id por
+  una constante con nombre, por ejemplo `InvalidPacketId`.
+
+- Limpiar includes.
+  Quitar headers no usados y agregar los que se usan explicitamente. Por
+  ejemplo, eliminar `<array>` si sigue sin uso y agregar `<limits>` para
+  `std::numeric_limits`.
+
+
+Pruebas de mantenimiento
+------------------------
+
+- Agregar pruebas de cancelacion de escrituras.
+  Cubrir escritura activa cancelada, escrituras en cola canceladas, cierre sin
+  `WriteHandler`, fallo fatal con cola pendiente, reapertura tras fallo y
+  completions antiguas que llegan despues de limpiar o reiniciar la sesion.
+
+- Agregar pruebas de invariantes de cola.
+  Verificar que los contadores de elementos y, cuando exista, bytes pendientes
+  se restauren correctamente tras escritura exitosa, error, cancelacion,
+  cierre, reapertura y rechazo por limite.
+
+- Agregar pruebas de contrato de callbacks.
+  Cubrir ausencia de handlers, reemplazo de handlers, callbacks que llaman a
+  metodos publicos y, si se decide soportarlo, excepciones lanzadas por
+  callbacks de usuario.
