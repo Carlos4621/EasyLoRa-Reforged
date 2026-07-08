@@ -132,6 +132,9 @@ public:
     [[nodiscard]]
     WriteStatus asyncWrite(std::vector<uint8_t> toWrite, size_t packetID = std::numeric_limits<size_t>::max());
 
+    [[nodiscard]]
+    bool isOpen() noexcept;
+
 private:
     struct Pimpl;
 
@@ -155,29 +158,11 @@ public:
     [[nodiscard]]
     WriteStatus asyncWrite(std::vector<uint8_t> toWrite, size_t packetID);
 
-    void startRead();
-    void handleRead(boost::system::error_code ec, size_t bytesRead, size_t operationGeneration);
-
-    void doWrite();
-    void handleWrite(boost::system::error_code ec, size_t bytesWritten, size_t operationGeneration);
-
-    void stopAfterIoError() noexcept;
-
     void requestClose() noexcept;
     void closeOnStrand() noexcept;
 
-    void dispatchError(boost::system::error_code ec) noexcept;
-
     [[nodiscard]]
-    bool isRecoverableError(boost::system::error_code ec) noexcept;
-
-    [[nodiscard]]
-    FatalErrors clarifyFatalError(boost::system::error_code ec);
-
-    [[nodiscard]]
-    RecoverableErrors clarifyRecoverableError(boost::system::error_code ec);
-
-    void recoverFromError(RecoverableErrors error);
+    bool isOpen() const noexcept;
 
 private:
 
@@ -202,6 +187,27 @@ private:
     std::atomic<size_t> pendingWrites{ 0 };
 
     State currentState_m{ State::Closed };
+
+    void startRead();
+    void handleRead(boost::system::error_code ec, size_t bytesRead, size_t operationGeneration);
+
+    void doWrite();
+    void handleWrite(boost::system::error_code ec, size_t bytesWritten, size_t operationGeneration);
+
+    void stopAfterIoError() noexcept;
+
+    [[nodiscard]]
+    FatalErrors clarifyFatalError(boost::system::error_code ec);
+
+    [[nodiscard]]
+    RecoverableErrors clarifyRecoverableError(boost::system::error_code ec);
+
+    void recoverFromError(RecoverableErrors error);
+
+    void dispatchError(boost::system::error_code ec) noexcept;
+
+    [[nodiscard]]
+    bool isRecoverableError(boost::system::error_code ec) noexcept;
 };
 
 template <class Stream>
@@ -253,6 +259,11 @@ inline WriteStatus BasicSerialTransport<Stream>::asyncWrite(std::vector<uint8_t>
 }
 
 template <class Stream>
+inline bool BasicSerialTransport<Stream>::isOpen() noexcept {
+    return pimpl_m->isOpen();
+}
+
+template <class Stream>
 inline BasicSerialTransport<Stream>::Pimpl::Pimpl(boost::asio::io_context &context)
     : strand{ context.get_executor() }
     , serial{ context }
@@ -289,6 +300,8 @@ inline void BasicSerialTransport<Stream>::Pimpl::open(std::string portPath, Seri
             self->serial.set_option(boost::asio::serial_port_base::flow_control(serialConfig.flowControl));
 
             self->startRead();
+
+
         }
     );
 }
@@ -608,6 +621,11 @@ template <class Stream>
 inline void BasicSerialTransport<Stream>::Pimpl::recoverFromError(RecoverableErrors error) {
     rxBuffer.clear();
     startRead();
+}
+
+template <class Stream>
+inline bool BasicSerialTransport<Stream>::Pimpl::isOpen() const noexcept {
+    return currentState_m == State::Open;
 }
 
 /// @brief Clase encargada de recibir y enviar datos asíncronamente mediante el puerto serial
