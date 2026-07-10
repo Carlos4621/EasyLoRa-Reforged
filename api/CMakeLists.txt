@@ -20,12 +20,13 @@ add_subdirectory(
 add_library(easylora_api
 	src/EasyLoRa.cpp
 	include/SerialTransport.hpp
+	include/SerialTransportStates.hpp
+	include/SerialTransportTypes.hpp
 )
 
 add_library(EasyLoRa::api ALIAS easylora_api)
 
 target_include_directories(easylora_api PUBLIC
-	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/protocol/generated/protobuf>
 )
