@@ -20,14 +20,14 @@ target_compile_features(protocol_codec_tests PRIVATE cxx_std_23)
 
 gtest_discover_tests(protocol_codec_tests)
 
-if(TARGET protobuf-nanopb-static)
+if(EASYLORA_ENABLE_NANOPB)
 	add_executable(nanopb_compatibility_tests
 		NanopbCompatibilityTests.cpp
 	)
 
 	add_dependencies(nanopb_compatibility_tests generate_protocol_code)
 	target_include_directories(nanopb_compatibility_tests BEFORE PRIVATE "${NANOPB_GEN_DIR}")
-	target_link_libraries(nanopb_compatibility_tests PRIVATE GTest::gtest_main EasyLoRa::protocol protobuf-nanopb-static)
+	target_link_libraries(nanopb_compatibility_tests PRIVATE GTest::gtest_main EasyLoRa::protocol)
 	target_compile_features(nanopb_compatibility_tests PRIVATE cxx_std_23)
 
 	gtest_discover_tests(nanopb_compatibility_tests)
@@ -40,4 +40,14 @@ add_test(
 		-DEXTERNAL_CONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/external_consumer_build
 		-DPROTOCOL_SOURCE_DIR=${CMAKE_SOURCE_DIR}
 		-P ${CMAKE_CURRENT_SOURCE_DIR}/external_consumer/run_external_consumer.cmake
+)
+
+add_test(
+	NAME ExternalConsumer.FindPackageLinksInstalledTarget
+	COMMAND "${CMAKE_COMMAND}"
+		-DINSTALLED_CONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/installed_consumer
+		-DINSTALLED_CONSUMER_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/installed_consumer_build
+		-DPROTOCOL_BUILD_DIR=${CMAKE_BINARY_DIR}
+		-DPROTOCOL_INSTALL_DIR=${CMAKE_CURRENT_BINARY_DIR}/protocol_install
+		-P ${CMAKE_CURRENT_SOURCE_DIR}/installed_consumer/run_installed_consumer.cmake
 )

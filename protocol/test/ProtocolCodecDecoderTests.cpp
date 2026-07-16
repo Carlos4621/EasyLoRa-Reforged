@@ -170,6 +170,43 @@ TEST(CobsrCodecTests, EncodeRejectsOverlappingBufferWithoutOffset) {
     EXPECT_EQ(encoded.error(), ProtocolErrors::SameBufferError);
 }
 
+TEST(CobsrCodecTests, EncodeAcceptsAdjacentInputAndOutputBuffers) {
+    const auto raw = buildPayload(16);
+    const size_t requiredSize{ CobsrCodec::minimumOutputBufferSize(raw.size()) };
+    std::vector<uint8_t> storage(raw.size() + requiredSize, 0xEE);
+    std::copy(raw.begin(), raw.end(), storage.begin());
+
+    const auto inputSpan = std::span<const uint8_t>(storage.data(), raw.size());
+    auto outputSpan = std::span<uint8_t>(storage.data() + raw.size(), requiredSize);
+    const auto encoded = CobsrCodec::addCOBSR(inputSpan, outputSpan);
+
+    ASSERT_TRUE(encoded.has_value());
+    EXPECT_EQ(encoded.value().data(), outputSpan.data());
+}
+
+TEST(CobsrCodecTests, EncodeMatchesReferenceCApiForKnownInputs) {
+    const std::array<std::vector<uint8_t>, 4> knownInputs{
+        std::vector<uint8_t>{ 0x11 },
+        std::vector<uint8_t>{ 0x00 },
+        std::vector<uint8_t>{ 0x11, 0x00, 0x22 },
+        std::vector<uint8_t>{ 0x00, 0x00, 0x01, 0x02, 0x00 }
+    };
+
+    for (const auto& raw : knownInputs) {
+        std::vector<uint8_t> wrappedOutput(CobsrCodec::minimumOutputBufferSize(raw.size()), 0xEE);
+        const auto wrapped = CobsrCodec::addCOBSR(raw, wrappedOutput);
+        ASSERT_TRUE(wrapped.has_value());
+
+        std::vector<uint8_t> referenceOutput(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+        const auto reference = cobsr_encode(referenceOutput.data(), referenceOutput.size(), raw.data(), raw.size());
+        ASSERT_EQ(reference.status, COBSR_ENCODE_OK);
+
+        EXPECT_EQ(wrapped.value().size(), reference.out_len);
+        EXPECT_TRUE(std::equal(referenceOutput.begin(), referenceOutput.begin() + static_cast<std::ptrdiff_t>(reference.out_len),
+                               wrapped.value().begin()));
+    }
+}
+
 TEST(CobsrCodecDecoderTests, EncodeDecodeRoundTrip) {
     const auto raw = buildPayload(300);
     std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
@@ -273,6 +310,28 @@ TEST(ProtocolCodecDecoderTests, EncodeDecodeRoundTripWithCompleteFrame) {
     expectFrameMatches(decoded.value(), payload);
 }
 
+TEST(ProtocolCodecDecoderTests, MinimumBufferSizesCoverEncodeAndDecodeRequirements) {
+    for (const auto payloadSize : std::array<size_t, 4>{ 0U, 1U, 64U, FrameCodec::Max_Frame_Payload_Size }) {
+        auto payload = buildPayload(payloadSize);
+        const auto frame = makeFrame(payload);
+        const size_t rawSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
+
+        EXPECT_EQ(ProtocolCodec::minimumFrameBytesBufferSize(frame), rawSize);
+        EXPECT_EQ(ProtocolCodec::minimumOutputBufferSize(frame), CobsrCodec::minimumOutputBufferSize(rawSize));
+
+        std::vector<uint8_t> rawBuffer(ProtocolCodec::minimumFrameBytesBufferSize(frame), 0xEE);
+        std::vector<uint8_t> encodedBuffer(ProtocolCodec::minimumOutputBufferSize(frame), 0xEE);
+        const auto encoded = ProtocolCodec::encode(frame, rawBuffer, encodedBuffer);
+        ASSERT_TRUE(encoded.has_value()) << "payloadSize=" << payloadSize;
+
+        EXPECT_EQ(ProtocolDecoder::minimumFrameBytesBufferSize(encoded.value().size()),
+                  CobsrDecoder::minimumOutputBufferSize(encoded.value().size()));
+        const auto payloadBufferSize = ProtocolDecoder::minimumPayloadBufferSize(encoded.value().size());
+        ASSERT_TRUE(payloadBufferSize.has_value()) << "payloadSize=" << payloadSize;
+        EXPECT_GE(payloadBufferSize.value(), payload.size()) << "payloadSize=" << payloadSize;
+    }
+}
+
 TEST(ProtocolCodecTests, EncodePropagatesRawBufferTooSmall) {
     auto payload = buildPayload(4);
     const auto frame = makeFrame(payload);
@@ -346,6 +405,12 @@ TEST(ProtocolDecoderTests, DecodePropagatesInvalidCobsr) {
     EXPECT_EQ(decoded.error(), ProtocolErrors::COBSRDecodeError);
 }
 
+TEST(ProtocolDecoderTests, MinimumPayloadBufferSizeRejectsImpossibleEncodedSizes) {
+    const auto emptyInput = ProtocolDecoder::minimumPayloadBufferSize(0U);
+    ASSERT_FALSE(emptyInput.has_value());
+    EXPECT_EQ(emptyInput.error(), ProtocolErrors::InputBufferTooSmall);
+}
+
 TEST(ProtocolDecoderTests, DecodePropagatesCrcMismatchAfterValidCobsr) {
     auto payload = buildPayload(4);
     auto raw = buildRawBuffer(kVersion, kKindValue, kFlags, kReserved, kSeq, kTypeValue, payload);
@@ -401,6 +466,43 @@ TEST(ProtocolDecoderTests, DecodePropagatesInvalidMessageTypeAfterValidCobsr) {
     const auto decoded = ProtocolDecoder::decode(encoded.value(), rawBuffer, payloadBuffer);
     EXPECT_FALSE(decoded.has_value());
     EXPECT_EQ(decoded.error(), ProtocolErrors::InvalidMessageType);
+}
+
+TEST(ProtocolDecoderTests, DecodeErrorsLeavePayloadBufferUnchanged) {
+    auto validPayload = buildPayload(4);
+
+    struct ErrorCase {
+        uint8_t version;
+        uint8_t kind;
+        uint8_t type;
+        size_t payloadSize;
+        ProtocolErrors expectedError;
+    };
+
+    const std::array<ErrorCase, 4> errorCases{ {
+        { 0x02, kKindValue, kTypeValue, validPayload.size(), ProtocolErrors::FrameVersionMismatch },
+        { kVersion, 0xFF, kTypeValue, validPayload.size(), ProtocolErrors::InvalidPackageKind },
+        { kVersion, kKindValue, 0x99, validPayload.size(), ProtocolErrors::InvalidMessageType },
+        { kVersion, kKindValue, kTypeValue, FrameCodec::Max_Frame_Payload_Size + 1U, ProtocolErrors::InputBufferTooLong },
+    } };
+
+    for (const auto& errorCase : errorCases) {
+        auto payload = buildPayload(errorCase.payloadSize);
+        auto raw = buildRawBuffer(errorCase.version, errorCase.kind, kFlags, kReserved, kSeq, errorCase.type, payload);
+        std::vector<uint8_t> encodedBuffer(COBSR_ENCODE_DST_BUF_LEN_MAX(raw.size()), 0xEE);
+        const auto encoded = encodeRawWithCobsr(raw, encodedBuffer);
+        ASSERT_TRUE(encoded.has_value());
+
+        std::vector<uint8_t> rawBuffer(CobsrDecoder::minimumOutputBufferSize(encoded.value().size()), 0xEE);
+        std::vector<uint8_t> payloadBuffer(payload.size(), 0xEE);
+        const auto decoded = ProtocolDecoder::decode(encoded.value(), rawBuffer, payloadBuffer);
+
+        ASSERT_FALSE(decoded.has_value());
+        EXPECT_EQ(decoded.error(), errorCase.expectedError);
+        EXPECT_TRUE(std::all_of(payloadBuffer.begin(), payloadBuffer.end(), [](uint8_t value) {
+            return value == 0xEE;
+        }));
+    }
 }
 
 TEST(ProtocolDecoderTests, DecodeAcceptsCurrentVersionAndRejectsOtherVersions) {

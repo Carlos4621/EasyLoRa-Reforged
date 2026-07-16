@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -9,6 +10,7 @@
 #include "ProtocolErrors.hpp"
 #include "FrameCodec.hpp"
 #include "FrameDecoder.hpp"
+#include "SpanUtilities.hpp"
 
 namespace {
 constexpr uint8_t kVersion = Frame::Actual_Frame_Version;
@@ -140,6 +142,19 @@ TEST(RawFrameCodecTests, EncodeSupportsEmptyPayload) {
     EXPECT_EQ(output[bufferSize - 1], getLowByte(expectedCrc));
 }
 
+TEST(RawFrameCodecTests, MinimumOutputBufferSizeMatchesFrameLayout) {
+    for (const auto payloadSize : std::array<size_t, 4>{
+             0U,
+             1U,
+             static_cast<size_t>(FrameCodec::Max_Frame_Payload_Size),
+             static_cast<size_t>(FrameCodec::Max_Frame_Payload_Size + 1U) }) {
+        auto payload = buildPayload(payloadSize);
+        const auto frame = makeFrame(payload);
+
+        EXPECT_EQ(FrameCodec::minimumOutputBufferSize(frame), Frame::Header_Size + payloadSize + Frame::CRC_Size);
+    }
+}
+
 TEST(RawFrameCodecTests, EncodeAcceptsMaximumPayloadSize) {
     auto payload = buildPayload(FrameCodec::Max_Frame_Payload_Size);
     const auto frame = makeFrame(payload);
@@ -207,6 +222,45 @@ TEST(RawFrameCodecTests, EncodeReturnsErrorWhenPayloadOverlapsHeader) {
     EXPECT_EQ(result.error(), ProtocolErrors::SameBufferError);
 }
 
+TEST(RawFrameCodecTests, EncodeAcceptsAdjacentPayloadAndOutputBuffers) {
+    std::vector<uint8_t> payload{ 0x10, 0x20, 0x30 };
+    const size_t outputSize{ Frame::Header_Size + payload.size() + Frame::CRC_Size };
+    std::vector<uint8_t> storage(payload.size() + outputSize, 0xEE);
+    std::copy(payload.begin(), payload.end(), storage.begin());
+
+    Frame frame{};
+    frame.version = kVersion;
+    frame.kind = kKind;
+    frame.flags = kFlags;
+    frame.reserved = kReserved;
+    frame.seq = kSeq;
+    frame.type = kType;
+    frame.payload = std::span<const uint8_t>(storage.data(), payload.size());
+
+    auto outputSpan = std::span<uint8_t>(storage.data() + payload.size(), outputSize);
+    const auto result = FrameCodec::encode(frame, outputSpan);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().data(), outputSpan.data());
+    EXPECT_EQ(result.value().size(), outputSize);
+}
+
+TEST(SpanUtilitiesTests, AdjacentSpansDoNotOverlap) {
+    std::array<uint8_t, 8> storage{};
+    const auto left = std::span<const uint8_t>(storage.data(), 4);
+    const auto right = std::span<const uint8_t>(storage.data() + 4, 4);
+
+    EXPECT_FALSE(spansOverlap(left, right));
+}
+
+TEST(SpanUtilitiesTests, PartialOverlapAtBeginningOrEndIsDetected) {
+    std::array<uint8_t, 8> storage{};
+    const auto left = std::span<const uint8_t>(storage.data(), 5);
+    const auto right = std::span<const uint8_t>(storage.data() + 3, 5);
+
+    EXPECT_TRUE(spansOverlap(left, right));
+    EXPECT_TRUE(spansOverlap(right, left));
+}
+
 TEST(RawFrameDecoderTests, DecodeReturnsErrorWhenBufferTooSmall) {
     std::vector<uint8_t> raw(Frame::Header_Size + Frame::CRC_Size - 1, 0x00);
 
@@ -215,6 +269,17 @@ TEST(RawFrameDecoderTests, DecodeReturnsErrorWhenBufferTooSmall) {
     EXPECT_FALSE(decoded.has_value());
     EXPECT_EQ(decoded.error(), ProtocolErrors::InputBufferTooSmall);
     EXPECT_EQ(decodedPayload[0], 0xEE);
+}
+
+TEST(RawFrameDecoderTests, MinimumPayloadBufferSizeReportsRawPayloadBytes) {
+    EXPECT_EQ(FrameDecoder::minimumPayloadBufferSize(FrameDecoder::Min_Raw_Buffer_Size).value(), 0U);
+    EXPECT_EQ(FrameDecoder::minimumPayloadBufferSize(FrameDecoder::Min_Raw_Buffer_Size + 1U).value(), 1U);
+    EXPECT_EQ(FrameDecoder::minimumPayloadBufferSize(FrameDecoder::Max_Input_Buffer_Size).value(),
+              FrameCodec::Max_Frame_Payload_Size);
+
+    const auto tooSmall = FrameDecoder::minimumPayloadBufferSize(FrameDecoder::Min_Raw_Buffer_Size - 1U);
+    ASSERT_FALSE(tooSmall.has_value());
+    EXPECT_EQ(tooSmall.error(), ProtocolErrors::InputBufferTooSmall);
 }
 
 TEST(RawFrameDecoderTests, DecodeReturnsErrorOnInvalidCrc) {
@@ -259,6 +324,19 @@ TEST(RawFrameDecoderTests, DecodePopulatesFieldsAndPayload) {
     EXPECT_EQ(decodedFrame.seq, kSeq);
     EXPECT_EQ(decodedFrame.type, kType);
     EXPECT_EQ(decodedPayload, payload);
+}
+
+TEST(RawFrameCodecDecoderTests, SeqRoundTripsBoundaryValues) {
+    auto payload = buildPayload(3);
+
+    for (const auto seq : std::array<uint16_t, 5>{ 0x0000U, 0x0001U, 0x00FFU, 0x0100U, 0xFFFFU }) {
+        auto raw = buildRawBuffer(kVersion, kKindValue, kFlags, kReserved, seq, kTypeValue, payload);
+        std::vector<uint8_t> decodedPayload(payload.size(), 0xEE);
+
+        const auto decoded = FrameDecoder::decode(raw, decodedPayload);
+        ASSERT_TRUE(decoded.has_value()) << "seq=" << seq;
+        EXPECT_EQ(decoded.value().seq, seq);
+    }
 }
 
 TEST(RawFrameDecoderTests, DecodeAllowsLargerPayloadSpan) {

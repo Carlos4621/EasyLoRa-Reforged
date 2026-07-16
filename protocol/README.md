@@ -31,6 +31,45 @@ COBSR(version | kind | flags | reserved | seq_hi | seq_lo | type | payload | crc
 
 Si el transporte necesita separar frames consecutivos, el delimitador `0x00` pertenece a la capa de stream/transporte y debe agregarse fuera de `ProtocolCodec`. De la misma forma, `ProtocolDecoder` espera recibir un frame COBS/R sin ese delimitador.
 
+## Buffers y lifetime
+
+`Frame::payload` es un `std::span<const uint8_t>`: el protocolo no copia ni administra la memoria del payload. El buffer apuntado por `payload` debe seguir vivo mientras se use el `Frame`.
+
+En encode:
+
+- `FrameCodec::minimumOutputBufferSize(frame)` devuelve `Frame::Header_Size + frame.payload.size() + Frame::CRC_Size`.
+- `ProtocolCodec::minimumFrameBytesBufferSize(frame)` devuelve el tamano del frame raw intermedio.
+- `ProtocolCodec::minimumOutputBufferSize(frame)` devuelve el tamano maximo necesario para COBS/R.
+
+En decode:
+
+- `ProtocolDecoder::minimumFrameBytesBufferSize(inputSize)` recibe el tamano del input COBS/R y devuelve un tamano seguro para el buffer raw intermedio.
+- `ProtocolDecoder::minimumPayloadBufferSize(inputSize)` recibe el tamano del input COBS/R y devuelve un tamano conservador para `payloadInFrame`.
+- `FrameDecoder::minimumPayloadBufferSize(rawSize)` recibe el tamano raw, no el tamano COBS/R.
+
+`ProtocolDecoder::decode(inputBuffer, frameBytes, payloadInFrame)` usa `frameBytes` como scratch buffer para el frame raw y copia el payload valido en `payloadInFrame`. `frameBytes` y `payloadInFrame` deben ser buffers distintos.
+
+## Errores
+
+| Error | Capa principal | Condicion |
+| --- | --- | --- |
+| `OutputBufferTooSmall` | encode/decode | El buffer de salida no alcanza para el resultado solicitado. |
+| `CRCMismatch` | frame/protocol decode | El CRC recibido no coincide con el CRC calculado. Tiene prioridad sobre errores semanticos del header. |
+| `FramePayloadTooSmall` | frame/protocol decode | `payloadInFrame` no alcanza para copiar el payload decodificado. |
+| `FramePayloadTooLong` | frame/protocol encode | El payload de entrada supera `FrameCodec::Max_Frame_Payload_Size`. |
+| `InvalidPackageKind` | frame/protocol encode/decode | `kind` no corresponde a ningun valor de `PackageKind`. |
+| `InvalidMessageType` | frame/protocol encode/decode | `type` no corresponde a ningun valor de `MessageType`. |
+| `COBSREncodeError` | COBS/R encode | La libreria COBS/R rechazo la codificacion. |
+| `COBSRDecodeError` | COBS/R decode | El input COBS/R es invalido, por ejemplo contiene `0x00`. |
+| `SameBufferError` | encode/decode | Dos buffers se solapan en una operacion donde el solapamiento no es seguro. |
+| `EmptyInputBuffer` | COBS/R decode | Se intento decodificar un input vacio. |
+| `IncoherentFrame` | reservado | Error reservado para contratos de frame incoherentes. |
+| `CodificationError` | reservado | Error reservado para fallos de codificacion no clasificados. |
+| `HandlerWithIncorrectType` | reservado | Error reservado para dispatch/handlers de otro nivel. |
+| `FrameVersionMismatch` | frame/protocol decode | `version` no coincide con `Frame::Actual_Frame_Version`. |
+| `InputBufferTooLong` | frame/protocol decode | El frame raw supera `FrameDecoder::Max_Input_Buffer_Size`. |
+| `InputBufferTooSmall` | frame/protocol decode | El frame raw es menor que `FrameDecoder::Min_Raw_Buffer_Size`. |
+
 ## Politica de `seq`
 
 `seq` es un identificador de correlacion sin estado dentro de la capa de protocolo.
@@ -47,3 +86,57 @@ Reglas del campo:
 - `Event`: puede usar `seq` para trazabilidad, pero no requiere correlacion con un `Request`.
 
 El campo es de 16 bits y se codifica en big endian dentro del frame. Si el emisor usa un contador, el wrap-around ocurre naturalmente de `0xFFFF` a `0x0000`; la decision de aceptar o ignorar valores repetidos despues del wrap-around corresponde a la capa de aplicacion.
+
+## Build
+
+Dependencias requeridas:
+
+- CMake 3.20 o superior.
+- Compilador con C++23.
+- COBS instalado como libreria C (`cobs.h` y `libcobs`).
+- CRCpp instalado como headers (`CRC.h` o `CRCpp.h`).
+- Protobuf y `protoc`.
+- nanopb. Si `NANOPB_ROOT` no se define, CMake descarga nanopb 0.4.8 con `FetchContent`.
+
+Los esquemas compartidos viven en `../messages`. Cada proyecto genera sus clases
+en su propio directorio de build; CMake conserva los archivos existentes y
+vuelve a ejecutar `protoc` solamente si falta un output o cambia un `.proto` o
+su archivo `.options`.
+
+En `protocol`, `EASYLORA_ENABLE_PROTOBUF` y `EASYLORA_ENABLE_NANOPB` controlan
+qué variante se genera. Ambas están activadas al compilar `protocol` de forma
+independiente; API desactiva nanopb y firmware desactiva ambas para generar su
+propia variante nanopb con el toolchain de Pico.
+
+Presets utiles:
+
+```sh
+cmake --preset dev-tests
+cmake --build --preset dev-tests
+ctest --preset dev-tests
+```
+
+```sh
+cmake --preset strict
+cmake --build --preset strict
+ctest --preset strict
+```
+
+```sh
+cmake --preset sanitize
+cmake --build --preset sanitize
+ctest --preset sanitize
+```
+
+Para instalar el paquete CMake:
+
+```sh
+cmake --install build-dev-tests --prefix /tmp/easylora-protocol
+```
+
+Un consumidor CMake puede usar:
+
+```cmake
+find_package(EasyLoRaProtocol CONFIG REQUIRED)
+target_link_libraries(mi_target PRIVATE EasyLoRa::protocol)
+```

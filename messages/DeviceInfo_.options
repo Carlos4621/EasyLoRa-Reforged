@@ -1,0 +1,3 @@
+DeviceInfo_.firmware_version max_size:16
+DeviceInfo_.device_name max_size:32
+DeviceInfo_.hardware_revision max_size:16
