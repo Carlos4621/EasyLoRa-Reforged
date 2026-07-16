@@ -21,7 +21,7 @@ Frame MakeFrame(PackageKind kind, MessageType type, uint16_t seq = 0x1234) {
 }
 
 TEST(GetDeviceInfoHandlerTests, RejectsWrongMessageType) {
-    std::array<uint8_t, DeviceInfo_size> buffer{};
+    std::array<uint8_t, DeviceInfo__size> buffer{};
     size_t bytes_written = 77;
 
     const Frame frame = MakeFrame(PackageKind::Request, MessageType::GetConfiguration);
@@ -33,7 +33,7 @@ TEST(GetDeviceInfoHandlerTests, RejectsWrongMessageType) {
 }
 
 TEST(GetDeviceInfoHandlerTests, RejectsNonRequestKind) {
-    std::array<uint8_t, DeviceInfo_size> buffer{};
+    std::array<uint8_t, DeviceInfo__size> buffer{};
 
     for (PackageKind kind : {PackageKind::Response, PackageKind::Event, PackageKind::Error}) {
         size_t bytes_written = 33;
@@ -47,7 +47,7 @@ TEST(GetDeviceInfoHandlerTests, RejectsNonRequestKind) {
 }
 
 TEST(GetDeviceInfoHandlerTests, RejectsTooSmallBuffer) {
-    std::array<uint8_t, DeviceInfo_size - 1> buffer{};
+    std::array<uint8_t, DeviceInfo__size - 1> buffer{};
     size_t bytes_written = 19;
 
     const Frame frame = MakeFrame(PackageKind::Request, MessageType::GetDeviceInfo);
@@ -59,7 +59,7 @@ TEST(GetDeviceInfoHandlerTests, RejectsTooSmallBuffer) {
 }
 
 TEST(GetDeviceInfoHandlerTests, BuildsResponseWithEncodedPayload) {
-    std::array<uint8_t, DeviceInfo_size> buffer{};
+    std::array<uint8_t, DeviceInfo__size> buffer{};
     size_t bytes_written = 0;
 
     const uint16_t seq = 0xBEEF;
@@ -81,9 +81,9 @@ TEST(GetDeviceInfoHandlerTests, BuildsResponseWithEncodedPayload) {
     EXPECT_EQ(response.payload.size(), bytes_written);
     EXPECT_EQ(response.payload.data(), buffer.data());
 
-    DeviceInfo decoded = DeviceInfo_init_zero;
+    DeviceInfo_ decoded = DeviceInfo__init_zero;
     pb_istream_t stream = pb_istream_from_buffer(response.payload.data(), response.payload.size());
-    ASSERT_TRUE(pb_decode(&stream, &DeviceInfo_msg, &decoded));
+    ASSERT_TRUE(pb_decode(&stream, &DeviceInfo__msg, &decoded));
 
     EXPECT_STREQ(decoded.firmware_version, "0.1");
     EXPECT_EQ(decoded.protocol_version, 1u);

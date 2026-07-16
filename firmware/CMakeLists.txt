@@ -65,19 +65,12 @@ if (NOT FIRMWARE_BUILD_TESTS)
     set(CRCPP_INCLUDE_DIR "/usr/local/include" CACHE PATH "" FORCE)
     set(EASYLORA_ENABLE_PROTOBUF OFF CACHE BOOL "" FORCE)
     set(EASYLORA_ENABLE_NANOPB OFF CACHE BOOL "" FORCE)
-    if (NOT TARGET protobuf-nanopb-static AND NOT TARGET protobuf-nanopb)
-        include(FetchContent)
-        FetchContent_Declare(
-            nanopb
-            GIT_REPOSITORY https://github.com/nanopb/nanopb.git
-            GIT_TAG 0.4.8
-        )
-        FetchContent_MakeAvailable(nanopb)
-    endif()
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../protocol ${CMAKE_BINARY_DIR}/protocol)
 
-    set(NANOPB_GEN_DIR "${CMAKE_CURRENT_LIST_DIR}/../protocol/generated/nanopb")
-    file(GLOB NANOPB_GEN_SOURCES CONFIGURE_DEPENDS "${NANOPB_GEN_DIR}/*.pb.c")
+    include(${CMAKE_CURRENT_LIST_DIR}/../messages/EasyLoRaMessages.cmake)
+    set(NANOPB_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/nanopb")
+    easylora_generate_nanopb(NANOPB_GEN_SOURCES NANOPB_GEN_HEADERS "${NANOPB_GEN_DIR}")
+    add_custom_target(firmware_generate_nanopb DEPENDS ${NANOPB_GEN_SOURCES} ${NANOPB_GEN_HEADERS})
 
     # Add executable. Default name is the project name, version 0.1
     add_executable(firmware
@@ -91,9 +84,13 @@ if (NOT FIRMWARE_BUILD_TESTS)
         lib/Core_0/Core_0.cpp
         lib/FrameResponder/FrameResponder.cpp
         lib/GetDeviceInfoHandler/GetDeviceInfoHandler.cpp
+        ${NANOPB_GEN_SOURCES}
+        ${NANOPB_GEN_HEADERS}
+        "${EASYLORA_NANOPB_SOURCE_DIR}/pb_common.c"
+        "${EASYLORA_NANOPB_SOURCE_DIR}/pb_decode.c"
+        "${EASYLORA_NANOPB_SOURCE_DIR}/pb_encode.c"
     )
-
-    target_sources(firmware PRIVATE ${NANOPB_GEN_SOURCES})
+    add_dependencies(firmware firmware_generate_nanopb)
 
     pico_set_program_name(firmware "firmware")
     pico_set_program_version(firmware "0.1")
@@ -106,11 +103,6 @@ if (NOT FIRMWARE_BUILD_TESTS)
     target_link_libraries(firmware PRIVATE
         pico_stdlib
         EasyLoRa::protocol)
-    if (TARGET protobuf-nanopb-static)
-        target_link_libraries(firmware PRIVATE protobuf-nanopb-static)
-    elseif (TARGET protobuf-nanopb)
-        target_link_libraries(firmware PRIVATE protobuf-nanopb)
-    endif()
 
     # Add the standard include files to the build
     target_include_directories(firmware PRIVATE
@@ -126,6 +118,7 @@ if (NOT FIRMWARE_BUILD_TESTS)
         ${CMAKE_CURRENT_LIST_DIR}/lib/GetDeviceInfoHandler
         ${CMAKE_CURRENT_LIST_DIR}/lib/FrameResponder
         ${NANOPB_GEN_DIR}
+        ${EASYLORA_NANOPB_SOURCE_DIR}
     )
 
     # Add any user requested libraries
@@ -146,43 +139,10 @@ if (FIRMWARE_BUILD_TESTS)
     )
     FetchContent_MakeAvailable(googletest)
 
-    if (NOT TARGET protobuf-nanopb-static AND NOT TARGET protobuf-nanopb)
-        FetchContent_Declare(
-            nanopb
-            GIT_REPOSITORY https://github.com/nanopb/nanopb.git
-            GIT_TAG 0.4.8
-        )
-        FetchContent_MakeAvailable(nanopb)
-    endif()
-
-    find_package(Protobuf REQUIRED)
-
+    include(${CMAKE_CURRENT_LIST_DIR}/../messages/EasyLoRaMessages.cmake)
     set(NANOPB_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/nanopb")
-    set(DEVICE_INFO_PROTO "${CMAKE_CURRENT_LIST_DIR}/../protocol/proto/DeviceInfo.proto")
-    set(DEVICE_INFO_OPTIONS "${CMAKE_CURRENT_LIST_DIR}/../protocol/proto/DeviceInfo.options")
-    set(DEVICE_INFO_NANOPB_C "${NANOPB_GEN_DIR}/DeviceInfo.pb.c")
-    set(DEVICE_INFO_NANOPB_H "${NANOPB_GEN_DIR}/DeviceInfo.pb.h")
-    set(NANOPB_GEN_SOURCES "${DEVICE_INFO_NANOPB_C}")
-    set(NANOPB_PLUGIN "${nanopb_SOURCE_DIR}/generator/protoc-gen-nanopb")
-
-    file(MAKE_DIRECTORY "${NANOPB_GEN_DIR}")
-    add_custom_command(
-        OUTPUT
-            "${DEVICE_INFO_NANOPB_C}"
-            "${DEVICE_INFO_NANOPB_H}"
-        COMMAND "${Protobuf_PROTOC_EXECUTABLE}"
-            --proto_path=${CMAKE_CURRENT_LIST_DIR}/../protocol/proto
-            --plugin=protoc-gen-nanopb=${NANOPB_PLUGIN}
-            --nanopb_opt=-I${CMAKE_CURRENT_LIST_DIR}/../protocol/proto
-            --nanopb_out=${NANOPB_GEN_DIR}
-            ${DEVICE_INFO_PROTO}
-        DEPENDS
-            "${DEVICE_INFO_PROTO}"
-            "${DEVICE_INFO_OPTIONS}"
-        COMMENT "Generating nanopb for DeviceInfo"
-        VERBATIM
-    )
-    add_custom_target(firmware_generate_nanopb DEPENDS "${DEVICE_INFO_NANOPB_C}" "${DEVICE_INFO_NANOPB_H}")
+    easylora_generate_nanopb(NANOPB_GEN_SOURCES NANOPB_GEN_HEADERS "${NANOPB_GEN_DIR}")
+    add_custom_target(firmware_generate_nanopb DEPENDS ${NANOPB_GEN_SOURCES} ${NANOPB_GEN_HEADERS})
 
     enable_testing()
 
@@ -200,6 +160,10 @@ if (FIRMWARE_BUILD_TESTS)
         tests/getdeviceinfohandler_tests.cpp
         lib/GetDeviceInfoHandler/GetDeviceInfoHandler.cpp
         ${NANOPB_GEN_SOURCES}
+        ${NANOPB_GEN_HEADERS}
+        "${EASYLORA_NANOPB_SOURCE_DIR}/pb_common.c"
+        "${EASYLORA_NANOPB_SOURCE_DIR}/pb_decode.c"
+        "${EASYLORA_NANOPB_SOURCE_DIR}/pb_encode.c"
     )
     add_dependencies(getdeviceinfohandler_tests firmware_generate_nanopb)
     target_compile_features(getdeviceinfohandler_tests PRIVATE cxx_std_23)
@@ -207,13 +171,9 @@ if (FIRMWARE_BUILD_TESTS)
         ${CMAKE_CURRENT_LIST_DIR}/lib/GetDeviceInfoHandler
         ${CMAKE_CURRENT_LIST_DIR}/../protocol/include
         ${NANOPB_GEN_DIR}
+        ${EASYLORA_NANOPB_SOURCE_DIR}
     )
     target_link_libraries(getdeviceinfohandler_tests PRIVATE GTest::gtest_main)
-    if (TARGET protobuf-nanopb-static)
-        target_link_libraries(getdeviceinfohandler_tests PRIVATE protobuf-nanopb-static)
-    elseif (TARGET protobuf-nanopb)
-        target_link_libraries(getdeviceinfohandler_tests PRIVATE protobuf-nanopb)
-    endif()
 
     if (FIRMWARE_TEST_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         target_compile_options(framewaiter_tests PRIVATE

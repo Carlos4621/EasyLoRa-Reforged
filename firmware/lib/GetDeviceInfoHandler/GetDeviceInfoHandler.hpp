@@ -10,7 +10,7 @@
 #include <utility>
 #include "pb.h"
 #include "pb_encode.h"
-#include "DeviceInfo.pb.h"
+#include "DeviceInfo_.pb.h"
 
 /// @brief Handler que arma respuestas para Frames con MessageType::GetDeviceInfo
 class GetDeviceInfoHandle {
@@ -31,7 +31,7 @@ private:
     static constexpr std::string_view Hardware_Revision{ "2" };
 
     [[nodiscard]]
-    static DeviceInfo getDeviceInfo() noexcept;
+    static DeviceInfo_ getDeviceInfo() noexcept;
 
     static std::expected<Frame, ProtocolErrors> handleRequest(const Frame& frame, std::span<uint8_t> framePayloadBuffer, size_t& bytesWritten) noexcept;
 };
