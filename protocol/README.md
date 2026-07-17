@@ -1,148 +1,167 @@
-# EasyLoRa protocol
+# protocol
 
-En esta carpeta se recopilan los headers y fuentes en comun para la API y firmware del protocolo de envio y recepcion de informacion.
+Biblioteca C++23 creada a partir de una plantilla con CMake, Ninja, vcpkg, sanitizers, análisis estático y GoogleTest.
 
-## Formato binario del frame
+## Requisitos
 
-`FrameCodec` convierte un `Frame` a bytes en formato raw y agrega el CRC. `ProtocolCodec` toma ese frame raw, le aplica COBS/R para que pueda viajar por un transporte serial y agrega el delimitador final `0x00`.
+- CMake 3.28 o posterior.
+- Git.
+- Ninja para los presets de Clang y GCC.
+- Clang o GCC en Linux.
+- Visual Studio 2022 para el preset de MSVC.
+- clang-format y clang-tidy para formato y análisis.
 
-Frame raw antes de COBS/R:
+vcpkg se instala localmente en `.tools/vcpkg` mediante el script incluido.
 
-| Offset | Tamano | Campo | Formato |
-| --- | ---: | --- | --- |
-| 0 | 1 byte | `version` | `Frame::Actual_Frame_Version` actual: `1` |
-| 1 | 1 byte | `kind` | Valor numerico de `PackageKind` |
-| 2 | 1 byte | `flags` | Preservado por el protocolo |
-| 3 | 1 byte | `reserved` | Preservado por el protocolo |
-| 4 | 2 bytes | `seq` | Big endian |
-| 6 | 1 byte | `type` | Valor numerico de `MessageType` |
-| 7 | N bytes | `payload` | Bytes opacos para la capa de frame |
-| 7 + N | 2 bytes | `crc` | CRC16-CCITT-FALSE en big endian |
+## Proyecto generado y configurado automáticamente
 
-El CRC se calcula sobre todos los bytes anteriores al campo `crc`: header completo mas payload. El payload maximo aceptado por `FrameCodec::encode` es `FrameCodec::Max_Frame_Payload_Size`.
+Cuando este proyecto se crea mediante el `script.sh` de la plantilla, vcpkg se prepara y CMake se configura automáticamente con el preset `clang-debug`.
 
-En decode, la validacion de CRC ocurre antes de confiar en los campos del header. Si el CRC no coincide, `FrameDecoder` y `ProtocolDecoder` devuelven `ProtocolErrors::CRCMismatch` aunque `version`, `kind` o `type` tambien contengan valores invalidos.
+El generador no inicializa un repositorio Git, no compila la biblioteca y no ejecuta las pruebas. Esas acciones quedan bajo control del desarrollador.
 
-`ProtocolCodec::encode` produce:
+Para repetir manualmente la preparación de vcpkg:
+
+```bash
+bash scripts/bootstrap_vcpkg.sh
+```
+
+Para fijar una revisión concreta de vcpkg:
+
+```bash
+VCPKG_COMMIT=<commit> bash scripts/bootstrap_vcpkg.sh
+```
+
+## Desarrollo con Clang y clangd
+
+```bash
+bash scripts/configure.sh clang-debug
+bash scripts/build.sh clang-debug
+bash scripts/test.sh clang-debug
+```
+
+CMake genera la base de compilación directamente en:
 
 ```text
-COBSR(version | kind | flags | reserved | seq_hi | seq_lo | type | payload | crc_hi | crc_lo) | 0x00
+build/clang-debug/compile_commands.json
 ```
 
-El delimitador final `0x00` pertenece al resultado de `ProtocolCodec::encode`; la capa de transporte no debe agregar otro delimitador al frame ya codificado. `ProtocolDecoder` espera recibir el frame COBS/R con ese delimitador final. Si una capa de stream separa frames consecutivos al encontrar `0x00`, debe conservar ese byte en el span que entrega al decoder.
+El archivo `.clangd` de la raíz indica a clangd que lea esa base directamente.
+No se crean copias ni enlaces simbólicos. De esta forma clangd recibe también
+la ruta `build/clang-debug/generated`, donde CMake crea el encabezado de
+exportación de la biblioteca.
 
-## Buffers y lifetime
+`clang-debug` se utiliza como preset de desarrollo para el editor. Configúralo
+al menos una vez, incluso si después compilas o pruebas con otros presets:
 
-`Frame::payload` es un `std::span<const uint8_t>`: el protocolo no copia ni administra la memoria del payload. El buffer apuntado por `payload` debe seguir vivo mientras se use el `Frame`.
-
-En encode:
-
-- `FrameCodec::minimumOutputBufferSize(frame)` devuelve `Frame::Header_Size + frame.payload.size() + Frame::CRC_Size`.
-- `ProtocolCodec::minimumFrameBytesBufferSize(frame)` devuelve el tamano del frame raw intermedio.
-- `ProtocolCodec::minimumOutputBufferSize(frame)` devuelve el tamano maximo necesario para COBS/R mas el delimitador final.
-
-En decode:
-
-- `ProtocolDecoder::minimumFrameBytesBufferSize(inputSize)` recibe el tamano del input COBS/R con delimitador y devuelve un tamano seguro para el buffer raw intermedio.
-- `ProtocolDecoder::minimumPayloadBufferSize(inputSize)` recibe el tamano del input COBS/R con delimitador y devuelve un tamano conservador para `payloadInFrame`.
-- `FrameDecoder::minimumPayloadBufferSize(rawSize)` recibe el tamano raw, no el tamano COBS/R.
-
-`ProtocolDecoder::decode(ProtocolDecoderBuffers{...})` usa `frameBytes` como scratch buffer para el frame raw y copia el payload valido en `payloadInFrame`. `frameBytes` y `payloadInFrame` deben ser buffers distintos.
-
-## Errores
-
-| Error | Capa principal | Condicion |
-| --- | --- | --- |
-| `OutputBufferTooSmall` | encode/decode | El buffer de salida no alcanza para el resultado solicitado. |
-| `CRCMismatch` | frame/protocol decode | El CRC recibido no coincide con el CRC calculado. Tiene prioridad sobre errores semanticos del header. |
-| `FramePayloadTooSmall` | frame/protocol decode | `payloadInFrame` no alcanza para copiar el payload decodificado. |
-| `FramePayloadTooLong` | frame/protocol encode | El payload de entrada supera `FrameCodec::Max_Frame_Payload_Size`. |
-| `InvalidPackageKind` | frame/protocol encode/decode | `kind` no corresponde a ningun valor de `PackageKind`. |
-| `InvalidMessageType` | frame/protocol encode/decode | `type` no corresponde a ningun valor de `MessageType`. |
-| `COBSREncodeError` | COBS/R encode | La libreria COBS/R rechazo la codificacion. |
-| `COBSRDecodeError` | COBS/R decode | El input COBS/R es invalido, por ejemplo contiene `0x00` antes del delimitador final. |
-| `SameBufferError` | encode/decode | Dos buffers se solapan en una operacion donde el solapamiento no es seguro. |
-| `EmptyInputBuffer` | COBS/R decode | Se intento decodificar un input vacio. |
-| `IncoherentFrame` | reservado | Error reservado para contratos de frame incoherentes. |
-| `CodificationError` | reservado | Error reservado para fallos de codificacion no clasificados. |
-| `HandlerWithIncorrectType` | reservado | Error reservado para dispatch/handlers de otro nivel. |
-| `FrameVersionMismatch` | frame/protocol decode | `version` no coincide con `Frame::Actual_Frame_Version`. |
-| `InputBufferTooLong` | frame/protocol decode | El frame raw supera `FrameDecoder::Max_Input_Buffer_Size`. |
-| `InputBufferTooSmall` | frame/protocol decode | El frame raw es menor que `FrameDecoder::Min_Raw_Buffer_Size`. |
-
-## Politica de `seq`
-
-`seq` es un identificador de correlacion sin estado dentro de la capa de protocolo.
-
-`ProtocolCodec` solo serializa el valor recibido en `Frame::seq` y `ProtocolDecoder` solo lo entrega al usuario despues de validar y decodificar el frame. La capa de protocolo no guarda requests pendientes, no decide si una respuesta corresponde a una operacion activa, no maneja timeouts y no filtra duplicados.
-
-La correlacion entre `Request`, `Response` y `Error` pertenece al dispositivo o a la capa de aplicacion que usa el protocolo. Esa capa debe decidir como generar secuencias, guardar operaciones pendientes, aceptar o rechazar respuestas tardias, manejar duplicados y aplicar reintentos.
-
-Reglas del campo:
-
-- `Request`: usa un `seq` elegido por el emisor.
-- `Response`: debe copiar el `seq` del `Request` que responde.
-- `Error`: si responde a un `Request`, debe copiar el `seq` de ese `Request`.
-- `Event`: puede usar `seq` para trazabilidad, pero no requiere correlacion con un `Request`.
-
-El campo es de 16 bits y se codifica en big endian dentro del frame. Si el emisor usa un contador, el wrap-around ocurre naturalmente de `0xFFFF` a `0x0000`; la decision de aceptar o ignorar valores repetidos despues del wrap-around corresponde a la capa de aplicacion.
-
-## Build
-
-Dependencias requeridas:
-
-- CMake 3.20 o superior.
-- Compilador con C++23.
-- COBS instalado como libreria C (`cobs.h` y `libcobs`).
-- CRCpp instalado como headers (`CRC.h` o `CRCpp.h`).
-- Protobuf y `protoc`.
-- nanopb. Si `NANOPB_ROOT` no se define, CMake descarga nanopb 0.4.8 con `FetchContent`.
-
-Politica actual de dependencias externas:
-
-- COBS y CRCpp son dependencias explicitas del entorno de build; usar `COBS_ROOT` y `CRCPP_ROOT` cuando no esten en rutas del sistema.
-- Protobuf/protoc tambien se resuelven desde el entorno para evitar descargar toolchains de generacion en configure.
-- nanopb mantiene el fallback con `FetchContent` porque el generador y las fuentes C se integran al build local y ya estan fijados a la version 0.4.8.
-
-Los esquemas compartidos viven en `../messages`. Cada proyecto genera sus clases
-en su propio directorio de build; CMake conserva los archivos existentes y
-vuelve a ejecutar `protoc` solamente si falta un output o cambia un `.proto` o
-su archivo `.options`.
-
-En `protocol`, `EASYLORA_ENABLE_PROTOBUF` y `EASYLORA_ENABLE_NANOPB` controlan
-qué variante se genera. Ambas están activadas al compilar `protocol` de forma
-independiente; API desactiva nanopb y firmware desactiva ambas para generar su
-propia variante nanopb con el toolchain de Pico.
-
-Presets utiles:
-
-```sh
-cmake --preset dev-tests
-cmake --build --preset dev-tests
-ctest --preset dev-tests
+```bash
+bash scripts/configure.sh clang-debug
+cmake --preset clang-asan
+cmake --build --preset clang-asan
 ```
 
-```sh
-cmake --preset strict
-cmake --build --preset strict
-ctest --preset strict
+## Sanitizers
+
+ASan y UBSan:
+
+```bash
+cmake --preset clang-asan
+cmake --build --preset clang-asan
+ctest --preset clang-asan
 ```
 
-```sh
-cmake --preset sanitize
-cmake --build --preset sanitize
-ctest --preset sanitize
+ThreadSanitizer:
+
+```bash
+cmake --preset clang-tsan
+cmake --build --preset clang-tsan
+ctest --preset clang-tsan
 ```
 
-Para instalar el paquete CMake:
+## Análisis estático
 
-```sh
-cmake --install build-dev-tests --prefix /tmp/easylora-protocol
+```bash
+bash scripts/analyze.sh
 ```
 
-Un consumidor CMake puede usar:
+## Formato
+
+Comprobar:
+
+```bash
+bash scripts/format.sh --check
+```
+
+Aplicar:
+
+```bash
+bash scripts/format.sh --apply
+```
+
+## Biblioteca estática o compartida
+
+La biblioteca es estática por defecto:
+
+```bash
+cmake --preset release
+cmake --build --preset release
+```
+
+Para generar una biblioteca compartida:
+
+```bash
+cmake --preset shared-release
+cmake --build --preset shared-release
+```
+
+## Instalar la biblioteca
+
+```bash
+bash scripts/install_local.sh release
+```
+
+Por defecto se instala en:
+
+```text
+out/install/release
+```
+
+Un proyecto consumidor puede usarla así:
 
 ```cmake
-find_package(EasyLoRaProtocol CONFIG REQUIRED)
-target_link_libraries(mi_target PRIVATE EasyLoRa::protocol)
+find_package(protocol CONFIG REQUIRED)
+
+target_link_libraries(mi_aplicacion
+    PRIVATE
+        protocol::protocol
+)
+```
+
+## API inicial
+
+```cpp
+#include <protocol/protocol.hpp>
+
+const auto result = protocol::add(2, 3);
+```
+
+## Añadir dependencias con vcpkg
+
+```bash
+.tools/vcpkg/vcpkg add port fmt
+.tools/vcpkg/vcpkg format-manifest vcpkg.json
+```
+
+Después:
+
+```cmake
+find_package(fmt CONFIG REQUIRED)
+target_link_libraries(protocol PRIVATE fmt::fmt)
+```
+
+## Documentación del entorno
+
+La guía completa se encuentra en:
+
+```text
+docs/guia_entorno_cpp_vcpkg.md
 ```

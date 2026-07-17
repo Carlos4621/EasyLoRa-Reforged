@@ -1,0 +1,11 @@
+include(CompilerWarnings)
+include(Sanitizers)
+include(StaticAnalyzers)
+include(Coverage)
+
+function(project_apply_options target)
+    project_set_warnings(${target})
+    project_enable_sanitizers(${target})
+    project_enable_static_analyzers(${target})
+    project_enable_coverage(${target})
+endfunction()

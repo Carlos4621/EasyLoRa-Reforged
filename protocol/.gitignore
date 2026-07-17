@@ -1,6 +1,29 @@
-build/
-generated/
-build-codex-tests/
-build-dev-tests/
-build-sanitize/
-build-strict/
+/build/
+/out/
+/.tools/
+/vcpkg_installed/
+CMakeUserPresets.json
+
+# IDEs
+.vscode/
+.idea/
+.vs/
+
+# Compiladores y cobertura
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.gcda
+*.gcno
+*.gcov
+coverage/
+coverage.html
+
+# Sistema operativo
+.DS_Store
+Thumbs.db

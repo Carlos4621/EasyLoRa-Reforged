@@ -1,0 +1,17 @@
+{
+  "name": "protocol",
+  "version-string": "0.1.0",
+  "description": "Biblioteca C++ protocol",
+  "dependencies": [
+    "crcpp",
+    "cobs-c"
+  ],
+  "features": {
+    "tests": {
+      "description": "Dependencias para pruebas unitarias",
+      "dependencies": [
+        "gtest"
+      ]
+    }
+  }
+}

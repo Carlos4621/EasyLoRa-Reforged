@@ -1,0 +1,6 @@
+CompileFlags:
+  CompilationDatabase: build/clang-debug
+
+InlayHints:
+  DeducedTypes: No
+  ParameterNames: No

@@ -1,0 +1,15 @@
+function(project_enable_coverage target)
+    if(NOT PROTOCOL_ENABLE_COVERAGE)
+        return()
+    endif()
+
+    if(MSVC)
+        message(WARNING "La configuración de cobertura incluida está orientada a Clang/GCC")
+        return()
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        target_compile_options(${target} PRIVATE --coverage -O0 -g)
+        target_link_options(${target} PRIVATE --coverage)
+    endif()
+endfunction()

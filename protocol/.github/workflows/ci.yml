@@ -1,0 +1,56 @@
+name: C++ CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        preset:
+          - clang-asan
+          - clang-tidy
+          - gcc-debug
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Instalar herramientas
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang clang-tidy cmake ninja-build g++
+
+      - name: Preparar vcpkg
+        run: bash scripts/bootstrap_vcpkg.sh
+
+      - name: Configurar
+        run: cmake --preset "${{ matrix.preset }}"
+
+      - name: Compilar
+        run: cmake --build --preset "${{ matrix.preset }}" --parallel
+
+      - name: Probar
+        if: matrix.preset != 'clang-tidy'
+        run: ctest --preset "${{ matrix.preset }}"
+
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Preparar vcpkg
+        shell: bash
+        run: bash scripts/bootstrap_vcpkg.sh
+
+      - name: Configurar
+        run: cmake --preset msvc-debug
+
+      - name: Compilar
+        run: cmake --build --preset msvc-debug --parallel
+
+      - name: Probar
+        run: ctest --preset msvc-debug
